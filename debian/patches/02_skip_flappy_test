@@ -1,0 +1,15 @@
+=== modified file 'dulwich/tests/test_porcelain.py'
+Index: dulwich/dulwich/tests/test_porcelain.py
+===================================================================
+--- dulwich.orig/dulwich/tests/test_porcelain.py
++++ dulwich/dulwich/tests/test_porcelain.py
+@@ -1324,6 +1324,9 @@ class PushTests(PorcelainTestCase):
+         clone the remote, commit a file to the clone, then push the changes
+         back to the remote.
+         """
++        self.skipTest(
++            'test is flappy - '
++            'see https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=913037')
+         outstream = BytesIO()
+         errstream = BytesIO()
+ 
