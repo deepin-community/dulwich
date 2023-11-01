@@ -17,7 +17,7 @@
 # and <http://www.apache.org/licenses/LICENSE-2.0> for a copy of the Apache
 # License, Version 2.0.
 #
-""" All line-ending related functions, from conversions to config processing
+r"""All line-ending related functions, from conversions to config processing.
 
 Line-ending normalization is a complex beast. Here is some notes and details
 about how it seems to work.
@@ -25,10 +25,10 @@ about how it seems to work.
 The normalization is a two-fold process that happens at two moments:
 
 - When reading a file from the index and to the working directory. For example
-  when doing a `git clone` or `git checkout` call. We call this process the
+  when doing a ``git clone`` or ``git checkout`` call. We call this process the
   read filter in this module.
 - When writing a file to the index from the working directory. For example
-  when doing a `git add` call. We call this process the write filter in this
+  when doing a ``git add`` call. We call this process the write filter in this
   module.
 
 Note that when checking status (getting unstaged changes), whether or not
@@ -51,47 +51,47 @@ The code for this heuristic is here:
 https://git.kernel.org/pub/scm/git/git.git/tree/convert.c#n46
 
 Dulwich have an implementation with a slightly different heuristic, the
-`is_binary` function in `dulwich.patch`.
+`dulwich.patch.is_binary` function.
 
 The binary detection heuristic implementation is close to the one in JGit:
 https://github.com/eclipse/jgit/blob/f6873ffe522bbc3536969a3a3546bf9a819b92bf/org.eclipse.jgit/src/org/eclipse/jgit/diff/RawText.java#L300
 
 There is multiple variables that impact the normalization.
 
-First, a repository can contains a `.gitattributes` file (or more than one...)
+First, a repository can contains a ``.gitattributes`` file (or more than one...)
 that can further customize the operation on some file patterns, for example:
 
-    *.txt text
+    \*.txt text
 
-Force all `.txt` files to be treated as text files and to have their lines
+Force all ``.txt`` files to be treated as text files and to have their lines
 endings normalized.
 
-    *.jpg -text
+    \*.jpg -text
 
-Force all `.jpg` files to be treated as binary files and to not have their
+Force all ``.jpg`` files to be treated as binary files and to not have their
 lines endings converted.
 
-    *.vcproj text eol=crlf
+    \*.vcproj text eol=crlf
 
-Force all `.vcproj` files to be treated as text files and to have their lines
-endings converted into `CRLF` in working directory no matter the native EOL of
+Force all ``.vcproj`` files to be treated as text files and to have their lines
+endings converted into ``CRLF`` in working directory no matter the native EOL of
 the platform.
 
-    *.sh text eol=lf
+    \*.sh text eol=lf
 
-Force all `.sh` files to be treated as text files and to have their lines
-endings converted into `LF` in working directory no matter the native EOL of
+Force all ``.sh`` files to be treated as text files and to have their lines
+endings converted into ``LF`` in working directory no matter the native EOL of
 the platform.
 
-If the `eol` attribute is not defined, Git uses the `core.eol` configuration
+If the ``eol`` attribute is not defined, Git uses the ``core.eol`` configuration
 value described later.
 
-    * text=auto
+    \* text=auto
 
 Force all files to be scanned by the text file heuristic detection and to have
 their line endings normalized in case they are detected as text files.
 
-Git also have a obsolete attribute named `crlf` that can be translated to the
+Git also have a obsolete attribute named ``crlf`` that can be translated to the
 corresponding text attribute value.
 
 Then there are some configuration option (that can be defined at the
@@ -100,30 +100,30 @@ repository or user level):
 - core.autocrlf
 - core.eol
 
-`core.autocrlf` is taken into account for all files that doesn't have a `text`
-attribute defined in `.gitattributes`; it takes three possible values:
+``core.autocrlf`` is taken into account for all files that doesn't have a ``text``
+attribute defined in ``.gitattributes``; it takes three possible values:
 
-    - `true`: This forces all files on the working directory to have CRLF
+    - ``true``: This forces all files on the working directory to have CRLF
       line-endings in the working directory and convert line-endings to LF
       when writing to the index. When autocrlf is set to true, eol value is
       ignored.
-    - `input`: Quite similar to the `true` value but only force the write
+    - ``input``: Quite similar to the ``true`` value but only force the write
       filter, ie line-ending of new files added to the index will get their
       line-endings converted to LF.
-    - `false` (default): No normalization is done.
+    - ``false`` (default): No normalization is done.
 
-`core.eol` is the top-level configuration to define the line-ending to use
+``core.eol`` is the top-level configuration to define the line-ending to use
 when applying the read_filer. It takes three possible values:
 
-    - `lf`: When normalization is done, force line-endings to be `LF` in the
+    - ``lf``: When normalization is done, force line-endings to be ``LF`` in the
       working directory.
-    - `crlf`: When normalization is done, force line-endings to be `CRLF` in
+    - ``crlf``: When normalization is done, force line-endings to be ``CRLF`` in
       the working directory.
-    - `native` (default): When normalization is done, force line-endings to be
+    - ``native`` (default): When normalization is done, force line-endings to be
       the platform's native line ending.
 
 One thing to remember is when line-ending normalization is done on a file, Git
-always normalize line-ending to `LF` when writing to the index.
+always normalize line-ending to ``LF`` when writing to the index.
 
 There are sources that seems to indicate that Git won't do line-ending
 normalization when a file contains mixed line-endings. I think this logic
@@ -136,15 +136,16 @@ Sources:
 - https://adaptivepatchwork.com/2012/03/01/mind-the-end-of-your-line/
 """
 
-from dulwich.objects import Blob
-from dulwich.patch import is_binary
+from .object_store import iter_tree_contents
+from .objects import Blob
+from .patch import is_binary
 
 CRLF = b"\r\n"
 LF = b"\n"
 
 
 def convert_crlf_to_lf(text_hunk):
-    """Convert CRLF in text hunk into LF
+    """Convert CRLF in text hunk into LF.
 
     Args:
       text_hunk: A bytes string representing a text hunk
@@ -154,7 +155,7 @@ def convert_crlf_to_lf(text_hunk):
 
 
 def convert_lf_to_crlf(text_hunk):
-    """Convert LF in text hunk into CRLF
+    """Convert LF in text hunk into CRLF.
 
     Args:
       text_hunk: A bytes string representing a text hunk
@@ -166,7 +167,7 @@ def convert_lf_to_crlf(text_hunk):
 
 
 def get_checkout_filter(core_eol, core_autocrlf, git_attributes):
-    """Returns the correct checkout filter based on the passed arguments"""
+    """Returns the correct checkout filter based on the passed arguments."""
     # TODO this function should process the git_attributes for the path and if
     # the text attribute is not defined, fallback on the
     # get_checkout_filter_autocrlf function with the autocrlf value
@@ -174,7 +175,7 @@ def get_checkout_filter(core_eol, core_autocrlf, git_attributes):
 
 
 def get_checkin_filter(core_eol, core_autocrlf, git_attributes):
-    """Returns the correct checkin filter based on the passed arguments"""
+    """Returns the correct checkin filter based on the passed arguments."""
     # TODO this function should process the git_attributes for the path and if
     # the text attribute is not defined, fallback on the
     # get_checkin_filter_autocrlf function with the autocrlf value
@@ -182,7 +183,7 @@ def get_checkin_filter(core_eol, core_autocrlf, git_attributes):
 
 
 def get_checkout_filter_autocrlf(core_autocrlf):
-    """Returns the correct checkout filter base on autocrlf value
+    """Returns the correct checkout filter base on autocrlf value.
 
     Args:
       core_autocrlf: The bytes configuration value of core.autocrlf.
@@ -190,7 +191,6 @@ def get_checkout_filter_autocrlf(core_autocrlf):
     Returns: Either None if no filter has to be applied or a function
         accepting a single argument, a binary text hunk
     """
-
     if core_autocrlf == b"true":
         return convert_lf_to_crlf
 
@@ -198,7 +198,7 @@ def get_checkout_filter_autocrlf(core_autocrlf):
 
 
 def get_checkin_filter_autocrlf(core_autocrlf):
-    """Returns the correct checkin filter base on autocrlf value
+    """Returns the correct checkin filter base on autocrlf value.
 
     Args:
       core_autocrlf: The bytes configuration value of core.autocrlf.
@@ -206,7 +206,6 @@ def get_checkin_filter_autocrlf(core_autocrlf):
     Returns: Either None if no filter has to be applied or a function
         accepting a single argument, a binary text hunk
     """
-
     if core_autocrlf == b"true" or core_autocrlf == b"input":
         return convert_crlf_to_lf
 
@@ -214,12 +213,12 @@ def get_checkin_filter_autocrlf(core_autocrlf):
     return None
 
 
-class BlobNormalizer(object):
+class BlobNormalizer:
     """An object to store computation result of which filter to apply based
-    on configuration, gitattributes, path and operation (checkin or checkout)
+    on configuration, gitattributes, path and operation (checkin or checkout).
     """
 
-    def __init__(self, config_stack, gitattributes):
+    def __init__(self, config_stack, gitattributes) -> None:
         self.config_stack = config_stack
         self.gitattributes = gitattributes
 
@@ -242,7 +241,7 @@ class BlobNormalizer(object):
         )
 
     def checkin_normalize(self, blob, tree_path):
-        """Normalize a blob during a checkin operation"""
+        """Normalize a blob during a checkin operation."""
         if self.fallback_write_filter is not None:
             return normalize_blob(
                 blob, self.fallback_write_filter, binary_detection=True
@@ -251,7 +250,7 @@ class BlobNormalizer(object):
         return blob
 
     def checkout_normalize(self, blob, tree_path):
-        """Normalize a blob during a checkout operation"""
+        """Normalize a blob during a checkout operation."""
         if self.fallback_read_filter is not None:
             return normalize_blob(
                 blob, self.fallback_read_filter, binary_detection=True
@@ -263,7 +262,7 @@ class BlobNormalizer(object):
 def normalize_blob(blob, conversion, binary_detection):
     """Takes a blob as input returns either the original blob if
     binary_detection is True and the blob content looks like binary, else
-    return a new blob with converted data
+    return a new blob with converted data.
     """
     # Read the original blob
     data = blob.data
@@ -285,12 +284,12 @@ def normalize_blob(blob, conversion, binary_detection):
 
 
 class TreeBlobNormalizer(BlobNormalizer):
-    def __init__(self, config_stack, git_attributes, object_store, tree=None):
+    def __init__(self, config_stack, git_attributes, object_store, tree=None) -> None:
         super().__init__(config_stack, git_attributes)
         if tree:
             self.existing_paths = {
                 name
-                for name, _, _ in object_store.iter_tree_contents(tree)
+                for name, _, _ in iter_tree_contents(object_store, tree)
             }
         else:
             self.existing_paths = set()

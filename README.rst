@@ -26,13 +26,13 @@ If you don't want to install the C bindings, specify the --pure argument to setu
 
 or if you are installing from pip::
 
-    $ pip install dulwich --global-option="--pure"
+    $ pip install --no-binary dulwich dulwich --config-settings "--build-option=--pure"
 
-Note that you can also specify --global-option in a
-`requirements.txt <https://pip.pypa.io/en/stable/reference/pip_install/#requirement-specifiers>`_
+Note that you can also specify --build-option in a
+`requirements.txt <https://pip.pypa.io/en/stable/reference/requirement-specifiers/>`_
 file, e.g. like this::
 
-    dulwich --global-option=--pure
+    dulwich --config-settings "--build-option=--pure"
 
 Getting started
 ---------------
@@ -73,9 +73,8 @@ Help
 ----
 
 There is a *#dulwich* IRC channel on the `OFTC <https://www.oftc.net/>`_, and
-`dulwich-announce <https://groups.google.com/forum/#!forum/dulwich-announce>`_
-and `dulwich-discuss <https://groups.google.com/forum/#!forum/dulwich-discuss>`_
-mailing lists.
+a `dulwich-discuss <https://groups.google.com/forum/#!forum/dulwich-discuss>`_
+mailing list.
 
 Contributing
 ------------
@@ -88,8 +87,5 @@ file and `list of open issues <https://github.com/dulwich/dulwich/issues>`_.
 Supported versions of Python
 ----------------------------
 
-At the moment, Dulwich supports (and is tested on) CPython 3.5 and later and
+At the moment, Dulwich supports (and is tested on) CPython 3.6 and later and
 Pypy.
-
-The latest release series to support Python 2.x was the 0.19 series. See
-the 0.19 branch in the Dulwich git repository.
