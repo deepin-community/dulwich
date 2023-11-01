@@ -20,16 +20,21 @@
 
 """Object specification."""
 
-from typing import Union, List, Tuple
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from .objects import Commit, ShaFile, Tree
+    from .refs import Ref, RefsContainer
+    from .repo import Repo
 
 
-def to_bytes(text):
+def to_bytes(text: Union[str, bytes]) -> bytes:
     if getattr(text, "encode", None) is not None:
-        text = text.encode("ascii")
-    return text
+        text = text.encode("ascii")  # type: ignore
+    return text  # type: ignore
 
 
-def parse_object(repo, objectish):
+def parse_object(repo: "Repo", objectish: Union[bytes, str]) -> "ShaFile":
     """Parse a string referring to an object.
 
     Args:
@@ -43,7 +48,7 @@ def parse_object(repo, objectish):
     return repo[objectish]
 
 
-def parse_tree(repo, treeish):
+def parse_tree(repo: "Repo", treeish: Union[bytes, str]) -> "Tree":
     """Parse a string referring to a tree.
 
     Args:
@@ -54,13 +59,17 @@ def parse_tree(repo, treeish):
       KeyError: If the object can not be found
     """
     treeish = to_bytes(treeish)
+    try:
+        treeish = parse_ref(repo, treeish)
+    except KeyError:  # treeish is commit sha
+        pass
     o = repo[treeish]
     if o.type_name == b"commit":
         return repo[o.tree]
     return o
 
 
-def parse_ref(container, refspec):
+def parse_ref(container: Union["Repo", "RefsContainer"], refspec: Union[str, bytes]) -> "Ref":
     """Parse a string referring to a reference.
 
     Args:
@@ -85,12 +94,15 @@ def parse_ref(container, refspec):
     raise KeyError(refspec)
 
 
-def parse_reftuple(lh_container, rh_container, refspec, force=False):
+def parse_reftuple(
+        lh_container: Union["Repo", "RefsContainer"],
+        rh_container: Union["Repo", "RefsContainer"], refspec: Union[str, bytes],
+        force: bool = False) -> Tuple[Optional["Ref"], Optional["Ref"], bool]:
     """Parse a reftuple spec.
 
     Args:
       lh_container: A RefsContainer object
-      hh_container: A RefsContainer object
+      rh_container: A RefsContainer object
       refspec: A string
     Returns: A tuple with left and right ref
     Raises:
@@ -100,6 +112,8 @@ def parse_reftuple(lh_container, rh_container, refspec, force=False):
     if refspec.startswith(b"+"):
         force = True
         refspec = refspec[1:]
+    lh: Optional[bytes]
+    rh: Optional[bytes]
     if b":" in refspec:
         (lh, rh) = refspec.split(b":")
     else:
@@ -121,14 +135,15 @@ def parse_reftuple(lh_container, rh_container, refspec, force=False):
 
 
 def parse_reftuples(
-        lh_container, rh_container,
-        refspecs: Union[bytes, List[bytes], List[Tuple[bytes, bytes]]],
+        lh_container: Union["Repo", "RefsContainer"],
+        rh_container: Union["Repo", "RefsContainer"],
+        refspecs: Union[bytes, List[bytes]],
         force: bool = False):
     """Parse a list of reftuple specs to a list of reftuples.
 
     Args:
       lh_container: A RefsContainer object
-      hh_container: A RefsContainer object
+      rh_container: A RefsContainer object
       refspecs: A list of refspecs or a string
       force: Force overwriting for all reftuples
     Returns: A list of refs
@@ -163,7 +178,7 @@ def parse_refs(container, refspecs):
     return ret
 
 
-def parse_commit_range(repo, committishs):
+def parse_commit_range(repo: "Repo", committishs: Union[str, bytes]) -> Iterator["Commit"]:
     """Parse a string referring to a range of commits.
 
     Args:
@@ -182,7 +197,7 @@ def parse_commit_range(repo, committishs):
 class AmbiguousShortId(Exception):
     """The short id is ambiguous."""
 
-    def __init__(self, prefix, options):
+    def __init__(self, prefix, options) -> None:
         self.prefix = prefix
         self.options = options
 
@@ -202,12 +217,12 @@ def scan_for_short_id(object_store, prefix):
     raise AmbiguousShortId(prefix, ret)
 
 
-def parse_commit(repo, committish):
+def parse_commit(repo: "Repo", committish: Union[str, bytes]) -> "Commit":
     """Parse a string referring to a single commit.
 
     Args:
       repo: A` Repo` object
-      commitish: A string referring to a single commit.
+      committish: A string referring to a single commit.
     Returns: A Commit object
     Raises:
       KeyError: When the reference commits can not be found

@@ -27,34 +27,23 @@ import shutil
 import tempfile
 import time
 import types
-
 import warnings
 
-from dulwich.index import (
-    commit_tree,
-)
-from dulwich.objects import (
-    FixedSha,
-    Commit,
-    Tag,
-    object_class,
-)
-from dulwich.pack import (
+from dulwich.tests import SkipTest, skipIf  # noqa: F401
+
+from ..index import commit_tree
+from ..objects import Commit, FixedSha, Tag, object_class
+from ..pack import (
+    DELTA_TYPES,
     OFS_DELTA,
     REF_DELTA,
-    DELTA_TYPES,
-    obj_sha,
     SHA1Writer,
+    create_delta,
+    obj_sha,
     write_pack_header,
     write_pack_object,
-    create_delta,
 )
-from dulwich.repo import Repo
-from dulwich.tests import (  # noqa: F401
-    skipIf,
-    SkipTest,
-)
-
+from ..repo import Repo
 
 # Plain files are very frequently used in tests, so let the mode be very short.
 F = 0o100644  # Shorthand mode for Files.
@@ -76,7 +65,7 @@ def open_repo(name, temp_dir=None):
     """
     if temp_dir is None:
         temp_dir = tempfile.mkdtemp()
-    repo_dir = os.path.join(os.path.dirname(__file__), "data", "repos", name)
+    repo_dir = os.path.join(os.path.dirname(__file__), "..", "..", "testdata", "repos", name)
     temp_repo_dir = os.path.join(temp_dir, name)
     shutil.copytree(repo_dir, temp_repo_dir, symlinks=True)
     return Repo(temp_repo_dir)
@@ -230,7 +219,7 @@ def build_pack(f, objects_spec, store=None):
     """
     sf = SHA1Writer(f)
     num_objects = len(objects_spec)
-    write_pack_header(sf, num_objects)
+    write_pack_header(sf.write, num_objects)
 
     full_objects = {}
     offsets = {}
@@ -260,7 +249,7 @@ def build_pack(f, objects_spec, store=None):
             base_index, data = obj
             base = offset - offsets[base_index]
             _, base_data, _ = full_objects[base_index]
-            obj = (base, create_delta(base_data, data))
+            obj = (base, list(create_delta(base_data, data)))
         elif type_num == REF_DELTA:
             base_ref, data = obj
             if isinstance(base_ref, int):
@@ -268,9 +257,9 @@ def build_pack(f, objects_spec, store=None):
             else:
                 base_type_num, base_data = store.get_raw(base_ref)
                 base = obj_sha(base_type_num, base_data)
-            obj = (base, create_delta(base_data, data))
+            obj = (base, list(create_delta(base_data, data)))
 
-        crc32 = write_pack_object(sf, type_num, obj)
+        crc32 = write_pack_object(sf.write, type_num, obj)
         offsets[i] = offset
         crc32s[i] = crc32
 
@@ -313,6 +302,7 @@ def build_commit_graph(object_store, commit_spec, trees=None, attrs=None):
       attrs: A dict of commit number -> (dict of attribute -> value) for
         assigning additional values to the commits.
     Returns: The list of commit objects created.
+
     Raises:
       ValueError: If an undefined commit identifier is listed as a parent.
     """
@@ -328,9 +318,9 @@ def build_commit_graph(object_store, commit_spec, trees=None, attrs=None):
         commit_num = commit[0]
         try:
             parent_ids = [nums[pn] for pn in commit[1:]]
-        except KeyError as e:
-            (missing_parent,) = e.args
-            raise ValueError("Unknown parent %i" % missing_parent)
+        except KeyError as exc:
+            (missing_parent,) = exc.args
+            raise ValueError("Unknown parent %i" % missing_parent) from exc
 
         blobs = []
         for entry in trees.get(commit_num, []):
@@ -363,7 +353,6 @@ def build_commit_graph(object_store, commit_spec, trees=None, attrs=None):
 
 def setup_warning_catcher():
     """Wrap warnings.showwarning with code that records warnings."""
-
     caught_warnings = []
     original_showwarning = warnings.showwarning
 
