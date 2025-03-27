@@ -2,6 +2,7 @@
 # Copyright (C) 2007 James Westby <jw+debian@jameswestby.net>
 # Copyright (C) 2008-2013 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -33,19 +34,14 @@ import stat
 import sys
 import time
 import warnings
+from collections.abc import Iterable
 from io import BytesIO
 from typing import (
     TYPE_CHECKING,
     Any,
     BinaryIO,
     Callable,
-    Dict,
-    FrozenSet,
-    Iterable,
-    List,
     Optional,
-    Set,
-    Tuple,
     Union,
 )
 
@@ -95,24 +91,24 @@ from .objects import (
     valid_hexsha,
 )
 from .pack import generate_unpacked_objects
-from .refs import (  # noqa: F401
-    ANNOTATED_TAG_SUFFIX,
+from .refs import (
+    ANNOTATED_TAG_SUFFIX,  # noqa: F401
     LOCAL_BRANCH_PREFIX,
-    LOCAL_TAG_PREFIX,
-    SYMREF,
+    LOCAL_TAG_PREFIX,  # noqa: F401
+    SYMREF,  # noqa: F401
     DictRefsContainer,
     DiskRefsContainer,
-    InfoRefsContainer,
+    InfoRefsContainer,  # noqa: F401
     Ref,
     RefsContainer,
     _set_default_branch,
     _set_head,
     _set_origin_head,
-    check_ref_format,
-    read_packed_refs,
-    read_packed_refs_with_peeled,
+    check_ref_format,  # noqa: F401
+    read_packed_refs,  # noqa: F401
+    read_packed_refs_with_peeled,  # noqa: F401
     serialize_refs,
-    write_packed_refs,
+    write_packed_refs,  # noqa: F401
 )
 
 CONTROLDIR = ".git"
@@ -144,11 +140,15 @@ class InvalidUserIdentity(Exception):
         self.identity = identity
 
 
+class DefaultIdentityNotFound(Exception):
+    """Default identity could not be determined."""
+
+
 # TODO(jelmer): Cache?
-def _get_default_identity() -> Tuple[str, str]:
+def _get_default_identity() -> tuple[str, str]:
     import socket
 
-    for name in ('LOGNAME', 'USER', 'LNAME', 'USERNAME'):
+    for name in ("LOGNAME", "USER", "LNAME", "USERNAME"):
         username = os.environ.get(name)
         if username:
             break
@@ -165,18 +165,22 @@ def _get_default_identity() -> Tuple[str, str]:
         except KeyError:
             fullname = None
         else:
-            if getattr(entry, 'gecos', None):
+            if getattr(entry, "gecos", None):
                 fullname = entry.pw_gecos.split(",")[0]
             else:
                 fullname = None
             if username is None:
                 username = entry.pw_name
     if not fullname:
+        if username is None:
+            raise DefaultIdentityNotFound("no username found")
         fullname = username
     email = os.environ.get("EMAIL")
     if email is None:
+        if username is None:
+            raise DefaultIdentityNotFound("no username found")
         email = f"{username}@{socket.gethostname()}"
-    return (fullname, email)  # type: ignore
+    return (fullname, email)
 
 
 def get_user_identity(config: "StackedConfig", kind: Optional[str] = None) -> bytes:
@@ -229,7 +233,7 @@ def get_user_identity(config: "StackedConfig", kind: Optional[str] = None) -> by
     return user + b" <" + email + b">"
 
 
-def check_user_identity(identity):
+def check_user_identity(identity) -> None:
     """Verify that a user identity is formatted correctly.
 
     Args:
@@ -243,13 +247,13 @@ def check_user_identity(identity):
         raise InvalidUserIdentity(identity) from exc
     if b">" not in snd:
         raise InvalidUserIdentity(identity)
-    if b'\0' in identity or b'\n' in identity:
+    if b"\0" in identity or b"\n" in identity:
         raise InvalidUserIdentity(identity)
 
 
 def parse_graftpoints(
     graftpoints: Iterable[bytes],
-) -> Dict[bytes, List[bytes]]:
+) -> dict[bytes, list[bytes]]:
     """Convert a list of graftpoints into a dict.
 
     Args:
@@ -273,14 +277,14 @@ def parse_graftpoints(
         else:
             parents = []
 
-        for sha in [commit] + parents:
+        for sha in [commit, *parents]:
             check_hexsha(sha, "Invalid graftpoint")
 
         grafts[commit] = parents
     return grafts
 
 
-def serialize_graftpoints(graftpoints: Dict[bytes, List[bytes]]) -> bytes:
+def serialize_graftpoints(graftpoints: dict[bytes, list[bytes]]) -> bytes:
     """Convert a dictionary of grafts into string.
 
     The graft dictionary is:
@@ -301,7 +305,7 @@ def serialize_graftpoints(graftpoints: Dict[bytes, List[bytes]]) -> bytes:
     return b"\n".join(graft_lines)
 
 
-def _set_filesystem_hidden(path):
+def _set_filesystem_hidden(path) -> None:
     """Mark path as to be hidden if supported by platform and filesystem.
 
     On win32 uses SetFileAttributesW api:
@@ -368,8 +372,8 @@ class BaseRepo:
         self.object_store = object_store
         self.refs = refs
 
-        self._graftpoints: Dict[bytes, List[bytes]] = {}
-        self.hooks: Dict[str, Hook] = {}
+        self._graftpoints: dict[bytes, list[bytes]] = {}
+        self.hooks: dict[str, Hook] = {}
 
     def _determine_file_mode(self) -> bool:
         """Probe the file-system to determine whether permissions can be trusted.
@@ -424,7 +428,7 @@ class BaseRepo:
         """
         raise NotImplementedError(self.get_named_file)
 
-    def _put_named_file(self, path: str, contents: bytes):
+    def _put_named_file(self, path: str, contents: bytes) -> None:
         """Write a file to the control dir with the given name and contents.
 
         Args:
@@ -433,7 +437,7 @@ class BaseRepo:
         """
         raise NotImplementedError(self._put_named_file)
 
-    def _del_named_file(self, path: str):
+    def _del_named_file(self, path: str) -> None:
         """Delete a file in the control directory with the given name."""
         raise NotImplementedError(self._del_named_file)
 
@@ -497,8 +501,8 @@ class BaseRepo:
         remote_has = missing_objects.get_remote_has()
         object_ids = list(missing_objects)
         return len(object_ids), generate_unpacked_objects(
-            self.object_store, object_ids, progress=progress,
-            other_haves=remote_has)
+            self.object_store, object_ids, progress=progress, other_haves=remote_has
+        )
 
     def find_missing_objects(
         self,
@@ -532,8 +536,10 @@ class BaseRepo:
         if not isinstance(wants, list):
             raise TypeError("determine_wants() did not return a list")
 
-        shallows: FrozenSet[ObjectID] = getattr(graph_walker, "shallow", frozenset())
-        unshallows: FrozenSet[ObjectID] = getattr(graph_walker, "unshallow", frozenset())
+        shallows: frozenset[ObjectID] = getattr(graph_walker, "shallow", frozenset())
+        unshallows: frozenset[ObjectID] = getattr(
+            graph_walker, "unshallow", frozenset()
+        )
 
         if wants == []:
             # TODO(dborowitz): find a way to short-circuit that doesn't change
@@ -544,8 +550,7 @@ class BaseRepo:
                 return None
 
             class DummyMissingObjectFinder:
-
-                def get_remote_has(self):
+                def get_remote_has(self) -> None:
                     return None
 
                 def __len__(self) -> int:
@@ -580,11 +585,16 @@ class BaseRepo:
             shallow=self.get_shallow(),
             progress=progress,
             get_tagged=get_tagged,
-            get_parents=get_parents)
+            get_parents=get_parents,
+        )
 
-    def generate_pack_data(self, have: List[ObjectID], want: List[ObjectID],
-                           progress: Optional[Callable[[str], None]] = None,
-                           ofs_delta: Optional[bool] = None):
+    def generate_pack_data(
+        self,
+        have: list[ObjectID],
+        want: list[ObjectID],
+        progress: Optional[Callable[[str], None]] = None,
+        ofs_delta: Optional[bool] = None,
+    ):
         """Generate pack data objects for a set of wants/haves.
 
         Args:
@@ -602,8 +612,8 @@ class BaseRepo:
         )
 
     def get_graph_walker(
-            self,
-            heads: Optional[List[ObjectID]] = None) -> ObjectStoreGraphWalker:
+        self, heads: Optional[list[ObjectID]] = None
+    ) -> ObjectStoreGraphWalker:
         """Retrieve a graph walker.
 
         A graph walker is used by a remote repository (or proxy)
@@ -624,7 +634,7 @@ class BaseRepo:
             heads, parents_provider.get_parents, shallow=self.get_shallow()
         )
 
-    def get_refs(self) -> Dict[bytes, bytes]:
+    def get_refs(self) -> dict[bytes, bytes]:
         """Get dictionary with all refs.
 
         Returns: A ``dict`` mapping ref names to SHA1s
@@ -648,9 +658,7 @@ class BaseRepo:
             elif cls is Tag:
                 raise NotTagError(ret)
             else:
-                raise Exception(
-                    f"Type invalid: {ret.type_name!r} != {cls.type_name!r}"
-                )
+                raise Exception(f"Type invalid: {ret.type_name!r} != {cls.type_name!r}")
         return ret
 
     def get_object(self, sha: bytes) -> ShaFile:
@@ -671,8 +679,7 @@ class BaseRepo:
             shallows=self.get_shallow(),
         )
 
-    def get_parents(self, sha: bytes,
-                    commit: Optional[Commit] = None) -> List[bytes]:
+    def get_parents(self, sha: bytes, commit: Optional[Commit] = None) -> list[bytes]:
         """Retrieve the parents of a specific commit.
 
         If the specific commit is a graftpoint, the graft parents
@@ -696,7 +703,7 @@ class BaseRepo:
         """Retrieve the worktree config object."""
         raise NotImplementedError(self.get_worktree_config)
 
-    def get_description(self):
+    def get_description(self) -> Optional[str]:
         """Retrieve the description for this repository.
 
         Returns: String with the description of the repository
@@ -704,7 +711,7 @@ class BaseRepo:
         """
         raise NotImplementedError(self.get_description)
 
-    def set_description(self, description):
+    def set_description(self, description) -> None:
         """Set the description for this repository.
 
         Args:
@@ -724,14 +731,14 @@ class BaseRepo:
         from .config import ConfigFile, StackedConfig
 
         local_config = self.get_config()
-        backends: List[ConfigFile] = [local_config]
-        if local_config.get_boolean((b"extensions", ), b"worktreeconfig", False):
+        backends: list[ConfigFile] = [local_config]
+        if local_config.get_boolean((b"extensions",), b"worktreeconfig", False):
             backends.append(self.get_worktree_config())
 
         backends += StackedConfig.default_backends()
         return StackedConfig(backends, writable=local_config)
 
-    def get_shallow(self) -> Set[ObjectID]:
+    def get_shallow(self) -> set[ObjectID]:
         """Get the set of shallow commits.
 
         Returns: Set of shallow commits.
@@ -742,7 +749,7 @@ class BaseRepo:
         with f:
             return {line.strip() for line in f}
 
-    def update_shallow(self, new_shallow, new_unshallow):
+    def update_shallow(self, new_shallow, new_unshallow) -> None:
         """Update the list of shallow objects.
 
         Args:
@@ -755,9 +762,7 @@ class BaseRepo:
         if new_unshallow:
             shallow.difference_update(new_unshallow)
         if shallow:
-            self._put_named_file(
-                "shallow", b"".join([sha + b"\n" for sha in shallow])
-            )
+            self._put_named_file("shallow", b"".join([sha + b"\n" for sha in shallow]))
         else:
             self._del_named_file("shallow")
 
@@ -775,8 +780,7 @@ class BaseRepo:
             return cached
         return peel_sha(self.object_store, self.refs[ref])[1].id
 
-    def get_walker(self, include: Optional[List[bytes]] = None,
-                   *args, **kwargs):
+    def get_walker(self, include: Optional[list[bytes]] = None, *args, **kwargs):
         """Obtain a walker for this repository.
 
         Args:
@@ -821,9 +825,7 @@ class BaseRepo:
           KeyError: when the specified ref or object does not exist
         """
         if not isinstance(name, bytes):
-            raise TypeError(
-                "'name' must be bytestring, not %.80s" % type(name).__name__
-            )
+            raise TypeError(f"'name' must be bytestring, not {type(name).__name__:.80}")
         if len(name) in (20, 40):
             try:
                 return self.object_store[name]
@@ -873,13 +875,17 @@ class BaseRepo:
         else:
             raise ValueError(name)
 
-    def _get_user_identity(self, config: "StackedConfig",
-                           kind: Optional[str] = None) -> bytes:
+    def _get_user_identity(
+        self, config: "StackedConfig", kind: Optional[str] = None
+    ) -> bytes:
         """Determine the identity to use for new commits."""
-        # TODO(jelmer): Deprecate this function in favor of get_user_identity
+        warnings.warn(
+            "use get_user_identity() rather than Repo._get_user_identity",
+            DeprecationWarning,
+        )
         return get_user_identity(config)
 
-    def _add_graftpoints(self, updated_graftpoints: Dict[bytes, List[bytes]]):
+    def _add_graftpoints(self, updated_graftpoints: dict[bytes, list[bytes]]) -> None:
         """Add or modify graftpoints.
 
         Args:
@@ -887,12 +893,12 @@ class BaseRepo:
         """
         # Simple validation
         for commit, parents in updated_graftpoints.items():
-            for sha in [commit] + parents:
+            for sha in [commit, *parents]:
                 check_hexsha(sha, "Invalid graftpoint")
 
         self._graftpoints.update(updated_graftpoints)
 
-    def _remove_graftpoints(self, to_remove: List[bytes] = []) -> None:
+    def _remove_graftpoints(self, to_remove: list[bytes] = []) -> None:
         """Remove graftpoints.
 
         Args:
@@ -908,7 +914,7 @@ class BaseRepo:
         with f:
             return [line.strip() for line in f.readlines() if line.strip()]
 
-    def do_commit(  # noqa: C901
+    def do_commit(
         self,
         message: Optional[bytes] = None,
         committer: Optional[bytes] = None,
@@ -920,7 +926,7 @@ class BaseRepo:
         tree: Optional[ObjectID] = None,
         encoding: Optional[bytes] = None,
         ref: Ref = b"HEAD",
-        merge_heads: Optional[List[ObjectID]] = None,
+        merge_heads: Optional[list[ObjectID]] = None,
         no_verify: bool = False,
         sign: bool = False,
     ):
@@ -1030,7 +1036,7 @@ class BaseRepo:
         else:
             try:
                 old_head = self.refs[ref]
-                c.parents = [old_head] + merge_heads
+                c.parents = [old_head, *merge_heads]
                 if sign:
                     c.sign(keyid)
                 self.object_store.add_object(c)
@@ -1066,7 +1072,7 @@ class BaseRepo:
         try:
             self.hooks["post-commit"].execute()
         except HookError as e:  # silent failure
-            warnings.warn("post-commit hook failed: %s" % e, UserWarning)
+            warnings.warn(f"post-commit hook failed: {e}", UserWarning)
         except KeyError:  # no hook defined, silent fallthrough
             pass
 
@@ -1127,15 +1133,17 @@ class Repo(BaseRepo):
         self,
         root: str,
         object_store: Optional[PackBasedObjectStore] = None,
-        bare: Optional[bool] = None
+        bare: Optional[bool] = None,
     ) -> None:
         hidden_path = os.path.join(root, CONTROLDIR)
         if bare is None:
-            if (os.path.isfile(hidden_path)
-                    or os.path.isdir(os.path.join(hidden_path, OBJECTDIR))):
+            if os.path.isfile(hidden_path) or os.path.isdir(
+                os.path.join(hidden_path, OBJECTDIR)
+            ):
                 bare = False
-            elif (os.path.isdir(os.path.join(root, OBJECTDIR))
-                    and os.path.isdir(os.path.join(root, REFSDIR))):
+            elif os.path.isdir(os.path.join(root, OBJECTDIR)) and os.path.isdir(
+                os.path.join(root, REFSDIR)
+            ):
                 bare = True
             else:
                 raise NotGitRepository(
@@ -1164,10 +1172,7 @@ class Repo(BaseRepo):
         self.path = root
         config = self.get_config()
         try:
-            repository_format_version = config.get(
-                "core",
-                "repositoryformatversion"
-            )
+            repository_format_version = config.get("core", "repositoryformatversion")
             format_version = (
                 0
                 if repository_format_version is None
@@ -1179,8 +1184,8 @@ class Repo(BaseRepo):
         if format_version not in (0, 1):
             raise UnsupportedVersion(format_version)
 
-        for extension, _value in config.items((b"extensions", )):
-            if extension not in (b'worktreeconfig', ):
+        for extension, _value in config.items((b"extensions",)):
+            if extension.lower() not in (b"worktreeconfig",):
                 raise UnsupportedExtension(extension)
 
         if object_store is None:
@@ -1211,7 +1216,7 @@ class Repo(BaseRepo):
 
     def _write_reflog(
         self, ref, old_sha, new_sha, committer, timestamp, timezone, message
-    ):
+    ) -> None:
         from .reflog import format_reflog_line
 
         path = os.path.join(self.controldir(), "logs", os.fsdecode(ref))
@@ -1221,7 +1226,7 @@ class Repo(BaseRepo):
             pass
         if committer is None:
             config = self.get_config_stack()
-            committer = self._get_user_identity(config)
+            committer = get_user_identity(config)
         check_user_identity(committer)
         if timestamp is None:
             timestamp = int(time.time())
@@ -1301,7 +1306,7 @@ class Repo(BaseRepo):
         # TODO(jelmer): Actually probe disk / look at filesystem
         return sys.platform != "win32"
 
-    def _put_named_file(self, path, contents):
+    def _put_named_file(self, path, contents) -> None:
         """Write a file to the control dir with the given name and contents.
 
         Args:
@@ -1312,7 +1317,7 @@ class Repo(BaseRepo):
         with GitFile(os.path.join(self.controldir(), path), "wb") as f:
             f.write(contents)
 
-    def _del_named_file(self, path):
+    def _del_named_file(self, path) -> None:
         try:
             os.unlink(os.path.join(self.controldir(), path))
         except FileNotFoundError:
@@ -1355,16 +1360,21 @@ class Repo(BaseRepo):
         from .index import Index
 
         if not self.has_index():
-            raise NoIndexPresent()
+            raise NoIndexPresent
         return Index(self.index_path())
 
-    def has_index(self):
+    def has_index(self) -> bool:
         """Check if an index is present."""
         # Bare repos must never have index files; non-bare repos may have a
         # missing index file, which is treated as empty.
         return not self.bare
 
-    def stage(self, fs_paths: Union[str, bytes, os.PathLike, Iterable[Union[str, bytes, os.PathLike]]]) -> None:
+    def stage(
+        self,
+        fs_paths: Union[
+            str, bytes, os.PathLike, Iterable[Union[str, bytes, os.PathLike]]
+        ],
+    ) -> None:
         """Stage a set of paths.
 
         Args:
@@ -1390,8 +1400,8 @@ class Repo(BaseRepo):
                 fs_path = os.fsencode(fs_path)
             if os.path.isabs(fs_path):
                 raise ValueError(
-                    "path %r should be relative to "
-                    "repository root, not absolute" % fs_path
+                    f"path {fs_path!r} should be relative to "
+                    "repository root, not absolute"
                 )
             tree_path = _fs_to_tree_path(fs_path)
             full_path = os.path.join(root_path_bytes, fs_path)
@@ -1425,7 +1435,7 @@ class Repo(BaseRepo):
                     index[tree_path] = index_entry_from_stat(st, blob.id)
         index.write()
 
-    def unstage(self, fs_paths: List[str]):
+    def unstage(self, fs_paths: list[str]) -> None:
         """Unstage specific file in the index
         Args:
           fs_paths: a list of files to unstage,
@@ -1435,7 +1445,7 @@ class Repo(BaseRepo):
 
         index = self.open_index()
         try:
-            tree_id = self[b'HEAD'].tree
+            tree_id = self[b"HEAD"].tree
         except KeyError:
             # no head mean no commit in the repo
             for fs_path in fs_paths:
@@ -1449,8 +1459,7 @@ class Repo(BaseRepo):
             try:
                 tree = self.object_store[tree_id]
                 assert isinstance(tree, Tree)
-                tree_entry = tree.lookup_path(
-                    self.object_store.__getitem__, tree_path)
+                tree_entry = tree.lookup_path(self.object_store.__getitem__, tree_path)
             except KeyError:
                 # if tree_entry didn't exist, this file was being added, so
                 # remove index entry
@@ -1458,9 +1467,7 @@ class Repo(BaseRepo):
                     del index[tree_path]
                     continue
                 except KeyError as exc:
-                    raise KeyError(
-                        "file '%s' not in index" % (tree_path.decode())
-                    ) from exc
+                    raise KeyError(f"file '{tree_path.decode()}' not in index") from exc
 
             st = None
             try:
@@ -1469,8 +1476,8 @@ class Repo(BaseRepo):
                 pass
 
             index_entry = IndexEntry(
-                ctime=(self[b'HEAD'].commit_time, 0),
-                mtime=(self[b'HEAD'].commit_time, 0),
+                ctime=(self[b"HEAD"].commit_time, 0),
+                mtime=(self[b"HEAD"].commit_time, 0),
                 dev=st.st_dev if st else 0,
                 ino=st.st_ino if st else 0,
                 mode=tree_entry[0],
@@ -1573,6 +1580,7 @@ class Repo(BaseRepo):
         except BaseException:
             if mkdir:
                 import shutil
+
                 shutil.rmtree(target_path)
             raise
         return target
@@ -1605,9 +1613,13 @@ class Repo(BaseRepo):
         if config.get_boolean(b"core", b"symlinks", True):
             symlink_fn = symlink
         else:
-            def symlink_fn(source, target):  # type: ignore
-                with open(target, 'w' + ('b' if isinstance(source, bytes) else '')) as f:
+
+            def symlink_fn(source, target) -> None:  # type: ignore
+                with open(
+                    target, "w" + ("b" if isinstance(source, bytes) else "")
+                ) as f:
                     f.write(source)
+
         return build_index_from_tree(
             self.path,
             self.index_path(),
@@ -1615,11 +1627,12 @@ class Repo(BaseRepo):
             tree,
             honor_filemode=honor_filemode,
             validate_path_element=validate_path_element,
-            symlink_fn=symlink_fn
+            symlink_fn=symlink_fn,
         )
 
     def get_worktree_config(self) -> "ConfigFile":
         from .config import ConfigFile
+
         path = os.path.join(self.commondir(), "config.worktree")
         try:
             return ConfigFile.from_path(path)
@@ -1656,9 +1669,9 @@ class Repo(BaseRepo):
             return None
 
     def __repr__(self) -> str:
-        return "<Repo at %r>" % self.path
+        return f"<Repo at {self.path!r}>"
 
-    def set_description(self, description):
+    def set_description(self, description) -> None:
         """Set the description for this repository.
 
         Args:
@@ -1668,8 +1681,15 @@ class Repo(BaseRepo):
 
     @classmethod
     def _init_maybe_bare(
-            cls, path, controldir, bare, object_store=None, config=None,
-            default_branch=None, symlinks: Optional[bool] = None):
+        cls,
+        path,
+        controldir,
+        bare,
+        object_store=None,
+        config=None,
+        default_branch=None,
+        symlinks: Optional[bool] = None,
+    ):
         for d in BASE_DIRECTORIES:
             os.mkdir(os.path.join(controldir, *d))
         if object_store is None:
@@ -1678,6 +1698,7 @@ class Repo(BaseRepo):
         if default_branch is None:
             if config is None:
                 from .config import StackedConfig
+
                 config = StackedConfig.default()
             try:
                 default_branch = config.get("init", "defaultBranch")
@@ -1688,7 +1709,15 @@ class Repo(BaseRepo):
         return ret
 
     @classmethod
-    def init(cls, path: str, *, mkdir: bool = False, config=None, default_branch=None, symlinks: Optional[bool] = None) -> "Repo":
+    def init(
+        cls,
+        path: str,
+        *,
+        mkdir: bool = False,
+        config=None,
+        default_branch=None,
+        symlinks: Optional[bool] = None,
+    ) -> "Repo":
         """Create a new repository.
 
         Args:
@@ -1702,9 +1731,13 @@ class Repo(BaseRepo):
         os.mkdir(controldir)
         _set_filesystem_hidden(controldir)
         return cls._init_maybe_bare(
-            path, controldir, False, config=config,
+            path,
+            controldir,
+            False,
+            config=config,
             default_branch=default_branch,
-            symlinks=symlinks)
+            symlinks=symlinks,
+        )
 
     @classmethod
     def _init_new_working_directory(cls, path, main_repo, identifier=None, mkdir=False):
@@ -1745,7 +1778,9 @@ class Repo(BaseRepo):
         return r
 
     @classmethod
-    def init_bare(cls, path, *, mkdir=False, object_store=None, config=None, default_branch=None):
+    def init_bare(
+        cls, path, *, mkdir=False, object_store=None, config=None, default_branch=None
+    ):
         """Create a new bare repository.
 
         ``path`` should already exist and be an empty directory.
@@ -1756,11 +1791,18 @@ class Repo(BaseRepo):
         """
         if mkdir:
             os.mkdir(path)
-        return cls._init_maybe_bare(path, path, True, object_store=object_store, config=config, default_branch=default_branch)
+        return cls._init_maybe_bare(
+            path,
+            path,
+            True,
+            object_store=object_store,
+            config=config,
+            default_branch=default_branch,
+        )
 
     create = init_bare
 
-    def close(self):
+    def close(self) -> None:
         """Close any files opened by this repository."""
         self.object_store.close()
 
@@ -1797,18 +1839,18 @@ class MemoryRepo(BaseRepo):
     def __init__(self) -> None:
         from .config import ConfigFile
 
-        self._reflog: List[Any] = []
+        self._reflog: list[Any] = []
         refs_container = DictRefsContainer({}, logger=self._append_reflog)
         BaseRepo.__init__(self, MemoryObjectStore(), refs_container)  # type: ignore
-        self._named_files: Dict[str, bytes] = {}
+        self._named_files: dict[str, bytes] = {}
         self.bare = True
         self._config = ConfigFile()
         self._description = None
 
-    def _append_reflog(self, *args):
+    def _append_reflog(self, *args) -> None:
         self._reflog.append(args)
 
-    def set_description(self, description):
+    def set_description(self, description) -> None:
         self._description = description
 
     def get_description(self):
@@ -1828,7 +1870,7 @@ class MemoryRepo(BaseRepo):
         """
         return sys.platform != "win32"
 
-    def _put_named_file(self, path, contents):
+    def _put_named_file(self, path, contents) -> None:
         """Write a file to the control dir with the given name and contents.
 
         Args:
@@ -1837,7 +1879,7 @@ class MemoryRepo(BaseRepo):
         """
         self._named_files[path] = contents
 
-    def _del_named_file(self, path):
+    def _del_named_file(self, path) -> None:
         try:
             del self._named_files[path]
         except KeyError:
@@ -1859,13 +1901,13 @@ class MemoryRepo(BaseRepo):
             return None
         return BytesIO(contents)
 
-    def open_index(self):
+    def open_index(self) -> "Index":
         """Fail to open index for this repo, since it is bare.
 
         Raises:
           NoIndexPresent: Raised when no index is present
         """
-        raise NoIndexPresent()
+        raise NoIndexPresent
 
     def get_config(self):
         """Retrieve the config object.

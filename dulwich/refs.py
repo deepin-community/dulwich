@@ -1,6 +1,7 @@
 # refs.py -- For dealing with git refs
 # Copyright (C) 2008-2013 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -20,10 +21,12 @@
 
 
 """Ref handling."""
+
 import os
 import warnings
+from collections.abc import Iterator
 from contextlib import suppress
-from typing import Any, Dict, Optional, Set
+from typing import Any, Optional
 
 from .errors import PackedRefsException, RefFormatError
 from .file import GitFile, ensure_dir_exists
@@ -52,7 +55,7 @@ class SymrefLoop(Exception):
         self.depth = depth
 
 
-def parse_symref_value(contents):
+def parse_symref_value(contents: bytes) -> bytes:
     """Parse a symref value.
 
     Args:
@@ -64,7 +67,7 @@ def parse_symref_value(contents):
     raise ValueError(contents)
 
 
-def check_ref_format(refname: Ref):
+def check_ref_format(refname: Ref) -> bool:
     """Check if a refname is correctly formatted.
 
     Implements all the same rules as git-check-ref-format[1].
@@ -113,7 +116,7 @@ class RefsContainer:
         timestamp=None,
         timezone=None,
         message=None,
-    ):
+    ) -> None:
         if self._logger is None:
             return
         if message is None:
@@ -128,7 +131,7 @@ class RefsContainer:
         timestamp=None,
         timezone=None,
         message=None,
-    ):
+    ) -> None:
         """Make a ref point at another ref.
 
         Args:
@@ -138,7 +141,7 @@ class RefsContainer:
         """
         raise NotImplementedError(self.set_symbolic_ref)
 
-    def get_packed_refs(self):
+    def get_packed_refs(self) -> dict[Ref, ObjectID]:
         """Get contents of the packed-refs file.
 
         Returns: Dictionary mapping ref names to SHA1s
@@ -148,7 +151,7 @@ class RefsContainer:
         """
         raise NotImplementedError(self.get_packed_refs)
 
-    def add_packed_refs(self, new_refs: Dict[Ref, Optional[ObjectID]]):
+    def add_packed_refs(self, new_refs: dict[Ref, Optional[ObjectID]]) -> None:
         """Add the given refs as packed refs.
 
         Args:
@@ -157,7 +160,7 @@ class RefsContainer:
         """
         raise NotImplementedError(self.add_packed_refs)
 
-    def get_peeled(self, name):
+    def get_peeled(self, name) -> Optional[ObjectID]:
         """Return the cached peeled value of a ref, if available.
 
         Args:
@@ -171,13 +174,13 @@ class RefsContainer:
     def import_refs(
         self,
         base: Ref,
-        other: Dict[Ref, ObjectID],
+        other: dict[Ref, ObjectID],
         committer: Optional[bytes] = None,
         timestamp: Optional[bytes] = None,
         timezone: Optional[bytes] = None,
         message: Optional[bytes] = None,
         prune: bool = False,
-    ):
+    ) -> None:
         if prune:
             to_delete = set(self.subkeys(base))
         else:
@@ -197,7 +200,7 @@ class RefsContainer:
         for ref in to_delete:
             self.remove_if_equals(b"/".join((base, ref)), None, message=message)
 
-    def allkeys(self):
+    def allkeys(self) -> Iterator[Ref]:
         """All refs present in this container."""
         raise NotImplementedError(self.allkeys)
 
@@ -232,7 +235,7 @@ class RefsContainer:
                 keys.add(refname[base_len:])
         return keys
 
-    def as_dict(self, base=None):
+    def as_dict(self, base=None) -> dict[Ref, ObjectID]:
         """Return the contents of this container as a dictionary."""
         ret = {}
         keys = self.keys(base)
@@ -248,7 +251,7 @@ class RefsContainer:
 
         return ret
 
-    def _check_refname(self, name):
+    def _check_refname(self, name) -> None:
         """Ensure a refname is valid and lives in refs or is HEAD.
 
         HEAD is not a valid refname according to git-check-ref-format, but this
@@ -280,7 +283,7 @@ class RefsContainer:
             contents = self.get_packed_refs().get(refname, None)
         return contents
 
-    def read_loose_ref(self, name):
+    def read_loose_ref(self, name) -> bytes:
         """Read a loose reference and return its contents.
 
         Args:
@@ -290,7 +293,7 @@ class RefsContainer:
         """
         raise NotImplementedError(self.read_loose_ref)
 
-    def follow(self, name):
+    def follow(self, name) -> tuple[list[bytes], bytes]:
         """Follow a reference name.
 
         Returns: a tuple of (refnames, sha), wheres refnames are the names of
@@ -315,7 +318,7 @@ class RefsContainer:
             return True
         return False
 
-    def __getitem__(self, name):
+    def __getitem__(self, name) -> ObjectID:
         """Get the SHA1 for a reference name.
 
         This method follows all symbolic references.
@@ -334,7 +337,7 @@ class RefsContainer:
         timestamp=None,
         timezone=None,
         message=None,
-    ):
+    ) -> bool:
         """Set a refname to new_ref only if it currently equals old_ref.
 
         This method follows all symbolic references if applicable for the
@@ -351,8 +354,9 @@ class RefsContainer:
         """
         raise NotImplementedError(self.set_if_equals)
 
-    def add_if_new(self, name, ref, committer=None, timestamp=None,
-                   timezone=None, message=None):
+    def add_if_new(
+        self, name, ref, committer=None, timestamp=None, timezone=None, message=None
+    ) -> bool:
         """Add a new reference only if it does not already exist.
 
         Args:
@@ -375,6 +379,8 @@ class RefsContainer:
           name: The refname to set.
           ref: The new sha the refname will refer to.
         """
+        if not (valid_hexsha(ref) or ref.startswith(SYMREF)):
+            raise ValueError(f"{ref!r} must be a valid sha (40 chars) or a symref")
         self.set_if_equals(name, None, ref)
 
     def remove_if_equals(
@@ -385,7 +391,7 @@ class RefsContainer:
         timestamp=None,
         timezone=None,
         message=None,
-    ):
+    ) -> bool:
         """Remove a refname only if it currently equals old_ref.
 
         This method does not follow symbolic references, even if applicable for
@@ -442,8 +448,8 @@ class DictRefsContainer(RefsContainer):
     def __init__(self, refs, logger=None) -> None:
         super().__init__(logger=logger)
         self._refs = refs
-        self._peeled: Dict[bytes, ObjectID] = {}
-        self._watchers: Set[Any] = set()
+        self._peeled: dict[bytes, ObjectID] = {}
+        self._watchers: set[Any] = set()
 
     def allkeys(self):
         return self._refs.keys()
@@ -454,7 +460,7 @@ class DictRefsContainer(RefsContainer):
     def get_packed_refs(self):
         return {}
 
-    def _notify(self, ref, newsha):
+    def _notify(self, ref, newsha) -> None:
         for watcher in self._watchers:
             watcher._notify((ref, newsha))
 
@@ -466,7 +472,7 @@ class DictRefsContainer(RefsContainer):
         timestamp=None,
         timezone=None,
         message=None,
-    ):
+    ) -> None:
         old = self.follow(name)[-1]
         new = SYMREF + other
         self._refs[name] = new
@@ -490,7 +496,7 @@ class DictRefsContainer(RefsContainer):
         timestamp=None,
         timezone=None,
         message=None,
-    ):
+    ) -> bool:
         if old_ref is not None and self._refs.get(name, ZERO_SHA) != old_ref:
             return False
         realnames, _ = self.follow(name)
@@ -518,7 +524,7 @@ class DictRefsContainer(RefsContainer):
         timestamp=None,
         timezone=None,
         message: Optional[bytes] = None,
-    ):
+    ) -> bool:
         if name in self._refs:
             return False
         self._refs[name] = ref
@@ -542,7 +548,7 @@ class DictRefsContainer(RefsContainer):
         timestamp=None,
         timezone=None,
         message=None,
-    ):
+    ) -> bool:
         if old_ref is not None and self._refs.get(name, ZERO_SHA) != old_ref:
             return False
         try:
@@ -565,14 +571,14 @@ class DictRefsContainer(RefsContainer):
     def get_peeled(self, name):
         return self._peeled.get(name)
 
-    def _update(self, refs):
+    def _update(self, refs) -> None:
         """Update multiple refs; intended only for testing."""
         # TODO(dborowitz): replace this with a public function that uses
         # set_if_equal.
         for ref, sha in refs.items():
             self.set_if_equals(ref, None, sha)
 
-    def _update_peeled(self, peeled):
+    def _update_peeled(self, peeled) -> None:
         """Update cached peeled refs; intended only for testing."""
         self._peeled.update(peeled)
 
@@ -583,17 +589,8 @@ class InfoRefsContainer(RefsContainer):
     def __init__(self, f) -> None:
         self._refs = {}
         self._peeled = {}
-        for line in f.readlines():
-            sha, name = line.rstrip(b"\n").split(b"\t")
-            if name.endswith(PEELED_TAG_SUFFIX):
-                name = name[:-3]
-                if not check_ref_format(name):
-                    raise ValueError("invalid ref name %r" % name)
-                self._peeled[name] = sha
-            else:
-                if not check_ref_format(name):
-                    raise ValueError("invalid ref name %r" % name)
-                self._refs[name] = sha
+        refs = read_info_refs(f)
+        (self._refs, self._peeled) = split_peeled_refs(refs)
 
     def allkeys(self):
         return self._refs.keys()
@@ -709,7 +706,7 @@ class DiskRefsContainer(RefsContainer):
                         self._packed_refs[name] = sha
         return self._packed_refs
 
-    def add_packed_refs(self, new_refs: Dict[Ref, Optional[ObjectID]]):
+    def add_packed_refs(self, new_refs: dict[Ref, Optional[ObjectID]]) -> None:
         """Add the given refs as packed refs.
 
         Args:
@@ -794,7 +791,7 @@ class DiskRefsContainer(RefsContainer):
             # errors depending on the specific operating system
             return None
 
-    def _remove_packed_ref(self, name):
+    def _remove_packed_ref(self, name) -> None:
         if self._packed_refs is None:
             return
         filename = os.path.join(self.path, b"packed-refs")
@@ -823,7 +820,7 @@ class DiskRefsContainer(RefsContainer):
         timestamp=None,
         timezone=None,
         message=None,
-    ):
+    ) -> None:
         """Make a ref point at another ref.
 
         Args:
@@ -862,7 +859,7 @@ class DiskRefsContainer(RefsContainer):
         timestamp=None,
         timezone=None,
         message=None,
-    ):
+    ) -> bool:
         """Set a refname to new_ref only if it currently equals old_ref.
 
         This method follows all symbolic references, and can be used to perform
@@ -930,7 +927,7 @@ class DiskRefsContainer(RefsContainer):
         timestamp=None,
         timezone=None,
         message: Optional[bytes] = None,
-    ):
+    ) -> bool:
         """Add a new reference only if it does not already exist.
 
         This method follows symrefs, and only ensures that the last ref in the
@@ -981,7 +978,7 @@ class DiskRefsContainer(RefsContainer):
         timestamp=None,
         timezone=None,
         message=None,
-    ):
+    ) -> bool:
         """Remove a refname only if it currently equals old_ref.
 
         This method does not follow symbolic references. It can be used to
@@ -1040,7 +1037,7 @@ class DiskRefsContainer(RefsContainer):
             except ValueError:
                 break
 
-            if parent == b'refs':
+            if parent == b"refs":
                 break
             parent_filename = self.refpath(parent)
             try:
@@ -1059,12 +1056,12 @@ def _split_ref_line(line):
     """Split a single ref line into a tuple of SHA1 and name."""
     fields = line.rstrip(b"\n\r").split(b" ")
     if len(fields) != 2:
-        raise PackedRefsException("invalid ref line %r" % line)
+        raise PackedRefsException(f"invalid ref line {line!r}")
     sha, name = fields
     if not valid_hexsha(sha):
-        raise PackedRefsException("Invalid hex sha %r" % sha)
+        raise PackedRefsException(f"Invalid hex sha {sha!r}")
     if not check_ref_format(name):
-        raise PackedRefsException("invalid ref name %r" % name)
+        raise PackedRefsException(f"invalid ref name {name!r}")
     return (sha, name)
 
 
@@ -1102,7 +1099,7 @@ def read_packed_refs_with_peeled(f):
             if not last:
                 raise PackedRefsException("unexpected peeled ref line")
             if not valid_hexsha(line[1:]):
-                raise PackedRefsException("Invalid hex sha %r" % line[1:])
+                raise PackedRefsException(f"Invalid hex sha {line[1:]!r}")
             sha, name = _split_ref_line(last)
             last = None
             yield (sha, name, line[1:])
@@ -1116,7 +1113,7 @@ def read_packed_refs_with_peeled(f):
         yield (sha, name, None)
 
 
-def write_packed_refs(f, packed_refs, peeled_refs=None):
+def write_packed_refs(f, packed_refs, peeled_refs=None) -> None:
     """Write a packed refs file.
 
     Args:
@@ -1146,6 +1143,7 @@ def write_info_refs(refs, store: ObjectContainer):
     """Generate info refs."""
     # TODO: Avoid recursive import :(
     from .object_store import peel_sha
+
     for name, sha in sorted(refs.items()):
         # get_refs() includes HEAD as a special case, but we don't want to
         # advertise it
@@ -1168,13 +1166,23 @@ def is_local_branch(x):
 def strip_peeled_refs(refs):
     """Remove all peeled refs."""
     return {
-        ref: sha
-        for (ref, sha) in refs.items()
-        if not ref.endswith(PEELED_TAG_SUFFIX)
+        ref: sha for (ref, sha) in refs.items() if not ref.endswith(PEELED_TAG_SUFFIX)
     }
 
 
-def _set_origin_head(refs, origin, origin_head):
+def split_peeled_refs(refs):
+    """Split peeled refs from regular refs."""
+    peeled = {}
+    regular = {}
+    for ref, sha in refs.items():
+        if ref.endswith(PEELED_TAG_SUFFIX):
+            peeled[ref[: -len(PEELED_TAG_SUFFIX)]] = sha
+        else:
+            regular[ref] = sha
+    return regular, peeled
+
+
+def _set_origin_head(refs, origin, origin_head) -> None:
     # set refs/remotes/origin/HEAD
     origin_base = b"refs/remotes/" + origin + b"/"
     if origin_head and origin_head.startswith(LOCAL_BRANCH_PREFIX):
@@ -1185,24 +1193,24 @@ def _set_origin_head(refs, origin, origin_head):
 
 
 def _set_default_branch(
-        refs: RefsContainer, origin: bytes, origin_head: bytes, branch: bytes,
-        ref_message: Optional[bytes]) -> bytes:
+    refs: RefsContainer,
+    origin: bytes,
+    origin_head: Optional[bytes],
+    branch: bytes,
+    ref_message: Optional[bytes],
+) -> bytes:
     """Set the default branch."""
     origin_base = b"refs/remotes/" + origin + b"/"
     if branch:
         origin_ref = origin_base + branch
         if origin_ref in refs:
             local_ref = LOCAL_BRANCH_PREFIX + branch
-            refs.add_if_new(
-                local_ref, refs[origin_ref], ref_message
-            )
+            refs.add_if_new(local_ref, refs[origin_ref], ref_message)
             head_ref = local_ref
         elif LOCAL_TAG_PREFIX + branch in refs:
             head_ref = LOCAL_TAG_PREFIX + branch
         else:
-            raise ValueError(
-                "%r is not a valid branch or tag" % os.fsencode(branch)
-            )
+            raise ValueError(f"{os.fsencode(branch)!r} is not a valid branch or tag")
     elif origin_head:
         head_ref = origin_head
         if origin_head.startswith(LOCAL_BRANCH_PREFIX):
@@ -1210,13 +1218,11 @@ def _set_default_branch(
         else:
             origin_ref = origin_head
         try:
-            refs.add_if_new(
-                head_ref, refs[origin_ref], ref_message
-            )
+            refs.add_if_new(head_ref, refs[origin_ref], ref_message)
         except KeyError:
             pass
     else:
-        raise ValueError('neither origin_head nor branch are provided')
+        raise ValueError("neither origin_head nor branch are provided")
     return head_ref
 
 
@@ -1228,9 +1234,7 @@ def _set_head(refs, head_ref, ref_message):
             _cls, obj = head.object
             head = obj.get_object(obj).id
         del refs[HEADREF]
-        refs.set_if_equals(
-            HEADREF, None, head, message=ref_message
-        )
+        refs.set_if_equals(HEADREF, None, head, message=ref_message)
     else:
         # set HEAD to specific branch
         try:
@@ -1245,11 +1249,11 @@ def _set_head(refs, head_ref, ref_message):
 def _import_remote_refs(
     refs_container: RefsContainer,
     remote_name: str,
-    refs: Dict[str, str],
+    refs: dict[str, str],
     message: Optional[bytes] = None,
     prune: bool = False,
     prune_tags: bool = False,
-):
+) -> None:
     stripped_refs = strip_peeled_refs(refs)
     branches = {
         n[len(LOCAL_BRANCH_PREFIX) :]: v
@@ -1267,19 +1271,24 @@ def _import_remote_refs(
         for (n, v) in stripped_refs.items()
         if n.startswith(LOCAL_TAG_PREFIX) and not n.endswith(PEELED_TAG_SUFFIX)
     }
-    refs_container.import_refs(LOCAL_TAG_PREFIX, tags, message=message, prune=prune_tags)
+    refs_container.import_refs(
+        LOCAL_TAG_PREFIX, tags, message=message, prune=prune_tags
+    )
 
 
 def serialize_refs(store, refs):
     # TODO: Avoid recursive import :(
     from .object_store import peel_sha
+
     ret = {}
     for ref, sha in refs.items():
         try:
             unpeeled, peeled = peel_sha(store, sha)
         except KeyError:
             warnings.warn(
-                "ref {} points at non-present sha {}".format(ref.decode("utf-8", "replace"), sha.decode("ascii")),
+                "ref {} points at non-present sha {}".format(
+                    ref.decode("utf-8", "replace"), sha.decode("ascii")
+                ),
                 UserWarning,
             )
             continue

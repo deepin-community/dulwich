@@ -1,6 +1,7 @@
 # config.py - Reading and writing Git config files
 # Copyright (C) 2011-2013 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -20,13 +21,13 @@
 
 """Working with Git submodules."""
 
-from typing import Iterator, Tuple
+from collections.abc import Iterator
 
 from .object_store import iter_tree_contents
 from .objects import S_ISGITLINK
 
 
-def iter_cached_submodules(store, root_tree_id: bytes) -> Iterator[Tuple[str, bytes]]:
+def iter_cached_submodules(store, root_tree_id: bytes) -> Iterator[tuple[str, bytes]]:
     """Iterate over cached submodules.
 
     Args:

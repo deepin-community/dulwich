@@ -1,6 +1,7 @@
 # stash.py
 # Copyright (C) 2018 Jelmer Vernooij <jelmer@samba.org>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -19,7 +20,6 @@
 #
 
 """Stash handling."""
-
 
 import os
 
@@ -42,9 +42,7 @@ class Stash:
 
     @property
     def _reflog_path(self):
-        return os.path.join(
-            self._repo.commondir(), "logs", os.fsdecode(self._ref)
-        )
+        return os.path.join(self._repo.commondir(), "logs", os.fsdecode(self._ref))
 
     def stashes(self):
         try:
@@ -58,7 +56,7 @@ class Stash:
         """Create a new stash from a Repo object."""
         return cls(repo)
 
-    def drop(self, index):
+    def drop(self, index) -> None:
         """Drop entry with specified index."""
         with open(self._reflog_path, "rb+") as f:
             drop_reflog_entry(f, index, rewrite=True)
@@ -95,7 +93,7 @@ class Stash:
             message=b"Index stash",
             merge_heads=[self._repo.head()],
             no_verify=True,
-            **commit_kwargs
+            **commit_kwargs,
         )
 
         # Then, the working tree one.
@@ -120,7 +118,7 @@ class Stash:
             message=message,
             merge_heads=[index_commit_id],
             no_verify=True,
-            **commit_kwargs
+            **commit_kwargs,
         )
 
         return cid

@@ -1,6 +1,7 @@
 # utils.py -- Test utilities for Dulwich.
 # Copyright (C) 2010 Google, Inc.
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -20,7 +21,6 @@
 
 """Utility functions common to Dulwich tests."""
 
-
 import datetime
 import os
 import shutil
@@ -28,12 +28,11 @@ import tempfile
 import time
 import types
 import warnings
+from unittest import SkipTest
 
-from dulwich.tests import SkipTest, skipIf  # noqa: F401
-
-from ..index import commit_tree
-from ..objects import Commit, FixedSha, Tag, object_class
-from ..pack import (
+from dulwich.index import commit_tree
+from dulwich.objects import Commit, FixedSha, Tag, object_class
+from dulwich.pack import (
     DELTA_TYPES,
     OFS_DELTA,
     REF_DELTA,
@@ -43,7 +42,7 @@ from ..pack import (
     write_pack_header,
     write_pack_object,
 )
-from ..repo import Repo
+from dulwich.repo import Repo
 
 # Plain files are very frequently used in tests, so let the mode be very short.
 F = 0o100644  # Shorthand mode for Files.
@@ -65,13 +64,15 @@ def open_repo(name, temp_dir=None):
     """
     if temp_dir is None:
         temp_dir = tempfile.mkdtemp()
-    repo_dir = os.path.join(os.path.dirname(__file__), "..", "..", "testdata", "repos", name)
+    repo_dir = os.path.join(
+        os.path.dirname(__file__), "..", "..", "testdata", "repos", name
+    )
     temp_repo_dir = os.path.join(temp_dir, name)
     shutil.copytree(repo_dir, temp_repo_dir, symlinks=True)
     return Repo(temp_repo_dir)
 
 
-def tear_down_repo(repo):
+def tear_down_repo(repo) -> None:
     """Tear down a test repository."""
     repo.close()
     temp_dir = os.path.dirname(repo.path.rstrip(os.sep))
@@ -97,8 +98,6 @@ def make_object(cls, **attrs):
         monkey-patched in, so this is a class that is exactly the same only
         with a __dict__ instead of __slots__.
         """
-
-        pass
 
     TestObject.__name__ = "TestObject_" + cls.__name__
 
@@ -162,7 +161,7 @@ def make_tag(target, **attrs):
 def functest_builder(method, func):
     """Generate a test method that tests the given function."""
 
-    def do_test(self):
+    def do_test(self) -> None:
         method(self, func)
 
     return do_test
@@ -190,9 +189,9 @@ def ext_functest_builder(method, func):
       func: The function implementation to pass to method.
     """
 
-    def do_test(self):
+    def do_test(self) -> None:
         if not isinstance(func, types.BuiltinFunctionType):
-            raise SkipTest("%s extension not found" % func)
+            raise SkipTest(f"{func} extension not found")
         method(self, func)
 
     return do_test
@@ -320,7 +319,7 @@ def build_commit_graph(object_store, commit_spec, trees=None, attrs=None):
             parent_ids = [nums[pn] for pn in commit[1:]]
         except KeyError as exc:
             (missing_parent,) = exc.args
-            raise ValueError("Unknown parent %i" % missing_parent) from exc
+            raise ValueError(f"Unknown parent {missing_parent}") from exc
 
         blobs = []
         for entry in trees.get(commit_num, []):
@@ -333,7 +332,7 @@ def build_commit_graph(object_store, commit_spec, trees=None, attrs=None):
         tree_id = commit_tree(object_store, blobs)
 
         commit_attrs = {
-            "message": ("Commit %i" % commit_num).encode("ascii"),
+            "message": (f"Commit {commit_num}").encode("ascii"),
             "parents": parent_ids,
             "tree": tree_id,
             "commit_time": commit_time,
@@ -356,12 +355,12 @@ def setup_warning_catcher():
     caught_warnings = []
     original_showwarning = warnings.showwarning
 
-    def custom_showwarning(*args, **kwargs):
+    def custom_showwarning(*args, **kwargs) -> None:
         caught_warnings.append(args[0])
 
     warnings.showwarning = custom_showwarning
 
-    def restore_showwarning():
+    def restore_showwarning() -> None:
         warnings.showwarning = original_showwarning
 
     return caught_warnings, restore_showwarning

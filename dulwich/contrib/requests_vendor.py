@@ -1,6 +1,7 @@
 # requests_vendor.py -- requests implementation of the AbstractHttpGitClient interface
 # Copyright (C) 2022 Eden Shalit <epopcop@gmail.com>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -29,6 +30,7 @@ the dulwich.client.HttpGitClient attribute:
 
 This implementation is experimental and does not have any tests.
 """
+
 from io import BytesIO
 
 from requests import Session
@@ -44,13 +46,7 @@ from ..errors import GitProtocolError, NotGitRepository
 
 class RequestsHttpGitClient(AbstractHttpGitClient):
     def __init__(
-            self,
-            base_url,
-            dumb=None,
-            config=None,
-            username=None,
-            password=None,
-            **kwargs
+        self, base_url, dumb=None, config=None, username=None, password=None, **kwargs
     ) -> None:
         self._username = username
         self._password = password
@@ -60,8 +56,7 @@ class RequestsHttpGitClient(AbstractHttpGitClient):
         if username is not None:
             self.session.auth = (username, password)
 
-        super().__init__(
-            base_url=base_url, dumb=dumb, **kwargs)
+        super().__init__(base_url=base_url, dumb=dumb, **kwargs)
 
     def _http_request(self, url, headers=None, data=None, allow_compression=False):
         req_headers = self.session.headers.copy()
@@ -79,15 +74,13 @@ class RequestsHttpGitClient(AbstractHttpGitClient):
             resp = self.session.get(url, headers=req_headers)
 
         if resp.status_code == 404:
-            raise NotGitRepository()
+            raise NotGitRepository
         if resp.status_code == 401:
             raise HTTPUnauthorized(resp.headers.get("WWW-Authenticate"), url)
         if resp.status_code == 407:
             raise HTTPProxyUnauthorized(resp.headers.get("Proxy-Authenticate"), url)
         if resp.status_code != 200:
-            raise GitProtocolError(
-                "unexpected http resp %d for %s" % (resp.status_code, url)
-            )
+            raise GitProtocolError(f"unexpected http resp {resp.status_code} for {url}")
 
         # Add required fields as stated in AbstractHttpGitClient._http_request
         resp.content_type = resp.headers.get("Content-Type")
@@ -143,8 +136,5 @@ def get_session(config):
         session.verify = ssl_verify
 
     if proxy_server:
-        session.proxies.update({
-            "http": proxy_server,
-            "https": proxy_server
-        })
+        session.proxies.update({"http": proxy_server, "https": proxy_server})
     return session

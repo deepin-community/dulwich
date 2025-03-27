@@ -1,4 +1,6 @@
 #!/usr/bin/python
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+
 # Example printing the last author of a specified file
 
 import sys
@@ -12,13 +14,14 @@ if len(sys.argv) < 2:
 
 r = Repo(".")
 
-path = sys.argv[1].encode('utf-8')
+path = sys.argv[1].encode("utf-8")
 
 w = r.get_walker(paths=[path], max_entries=1)
 try:
     c = next(iter(w)).commit
 except StopIteration:
-    print("No file %s anywhere in history." % sys.argv[1])
+    print(f"No file {sys.argv[1]} anywhere in history.")
 else:
-    print("{} was last changed by {} at {} (commit {})".format(
-        sys.argv[1], c.author, time.ctime(c.author_time), c.id))
+    print(
+        f"{sys.argv[1]} was last changed by {c.author} at {time.ctime(c.author_time)} (commit {c.id})"
+    )

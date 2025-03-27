@@ -1,6 +1,7 @@
 # mailmap.py -- Mailmap reader
 # Copyright (C) 2018 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -20,7 +21,7 @@
 
 """Mailmap file reader."""
 
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 
 def parse_identity(text):
@@ -64,12 +65,12 @@ class Mailmap:
     """Class for accessing a mailmap file."""
 
     def __init__(self, map=None) -> None:
-        self._table: Dict[Tuple[Optional[str], str], Tuple[str, str]] = {}
+        self._table: dict[tuple[Optional[str], Optional[str]], tuple[str, str]] = {}
         if map:
-            for (canonical_identity, from_identity) in map:
+            for canonical_identity, from_identity in map:
                 self.add_entry(canonical_identity, from_identity)
 
-    def add_entry(self, canonical_identity, from_identity=None):
+    def add_entry(self, canonical_identity, from_identity=None) -> None:
         """Add an entry to the mail mail.
 
         Any of the fields can be None, but at least one of them needs to be

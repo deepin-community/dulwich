@@ -1,6 +1,7 @@
 # porcelain.py -- Porcelain-like layer on top of Dulwich
 # Copyright (C) 2013 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -33,6 +34,7 @@ Currently implemented:
  * describe
  * diff-tree
  * fetch
+ * for-each-ref
  * init
  * ls-files
  * ls-remote
@@ -64,6 +66,7 @@ Functions should generally accept both unicode strings and bytestrings
 """
 
 import datetime
+import fnmatch
 import os
 import posixpath
 import stat
@@ -73,7 +76,7 @@ from collections import namedtuple
 from contextlib import closing, contextmanager
 from io import BytesIO, RawIOBase
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 from .archive import tar_stream
 from .client import get_transport_and_path
@@ -122,7 +125,7 @@ from .refs import (
     LOCAL_TAG_PREFIX,
     _import_remote_refs,
 )
-from .repo import BaseRepo, Repo
+from .repo import BaseRepo, Repo, get_user_identity
 from .server import (
     FileSystemBackend,
     ReceivePackHandler,
@@ -138,16 +141,16 @@ GitStatus = namedtuple("GitStatus", "staged unstaged untracked")
 class NoneStream(RawIOBase):
     """Fallback if stdout or stderr are unavailable, does nothing."""
 
-    def read(self, size=-1):
+    def read(self, size=-1) -> None:
         return None
 
-    def readall(self):
+    def readall(self) -> bytes:
+        return b""
+
+    def readinto(self, b) -> None:
         return None
 
-    def readinto(self, b):
-        return None
-
-    def write(self, b):
+    def write(self, b) -> None:
         return None
 
 
@@ -205,6 +208,7 @@ def parse_timezone_format(tz_str):
 
     # RFC 2822
     import email.utils
+
     rfc_2822 = email.utils.parsedate_tz(tz_str)
     if rfc_2822:
         return rfc_2822[9]
@@ -213,7 +217,9 @@ def parse_timezone_format(tz_str):
 
     # Supported offsets:
     # sHHMM, sHH:MM, sHH
-    iso_8601_pattern = re.compile("[0-9] ?([+-])([0-9]{2})(?::(?=[0-9]{2}))?([0-9]{2})?$")
+    iso_8601_pattern = re.compile(
+        "[0-9] ?([+-])([0-9]{2})(?::(?=[0-9]{2}))?([0-9]{2})?$"
+    )
     match = re.search(iso_8601_pattern, tz_str)
     total_secs = 0
     if match:
@@ -320,7 +326,7 @@ class DivergedBranches(Error):
         self.new_sha = new_sha
 
 
-def check_diverged(repo, current_sha, new_sha):
+def check_diverged(repo, current_sha, new_sha) -> None:
     """Check if updating to a sha can be done with fast forwarding.
 
     Args:
@@ -341,7 +347,7 @@ def archive(
     committish=None,
     outstream=default_bytes_out_stream,
     errstream=default_bytes_err_stream,
-):
+) -> None:
     """Create an archive.
 
     Args:
@@ -360,7 +366,7 @@ def archive(
             outstream.write(chunk)
 
 
-def update_server_info(repo="."):
+def update_server_info(repo=".") -> None:
     """Update server info files for a repository.
 
     Args:
@@ -370,7 +376,7 @@ def update_server_info(repo="."):
         server_update_server_info(r)
 
 
-def symbolic_ref(repo, ref_name, force=False):
+def symbolic_ref(repo, ref_name, force=False) -> None:
     """Set git symbolic ref into HEAD.
 
     Args:
@@ -381,11 +387,11 @@ def symbolic_ref(repo, ref_name, force=False):
     with open_repo_closing(repo) as repo_obj:
         ref_path = _make_branch_ref(ref_name)
         if not force and ref_path not in repo_obj.refs.keys():
-            raise Error("fatal: ref `%s` is not a ref" % ref_name)
+            raise Error(f"fatal: ref `{ref_name}` is not a ref")
         repo_obj.refs.set_symbolic_ref(b"HEAD", ref_path)
 
 
-def pack_refs(repo, all=False):
+def pack_refs(repo, all=False) -> None:
     with open_repo_closing(repo) as repo_obj:
         refs = repo_obj.refs
         packed_refs = {
@@ -492,7 +498,9 @@ def clone(
     depth: Optional[int] = None,
     branch: Optional[Union[str, bytes]] = None,
     config: Optional[Config] = None,
-    **kwargs
+    filter_spec=None,
+    protocol_version: Optional[int] = None,
+    **kwargs,
 ):
     """Clone a local or remote git repository.
 
@@ -508,6 +516,13 @@ def clone(
       branch: Optional branch or tag to be used as HEAD in the new repository
         instead of the cloned repository's HEAD.
       config: Configuration to use
+      refspecs: refspecs to fetch. Can be a bytestring, a string, or a list of
+        bytestring/string.
+      filter_spec: A git-rev-list-style object filter spec, as an ASCII string.
+        Only used if the server supports the Git protocol-v2 'filter'
+        feature, and ignored otherwise.
+      protocol_version: desired Git protocol version. By default the highest
+        mutually supported protocol version will be used.
     Returns: The new repository
     """
     if outstream is not None:
@@ -536,8 +551,10 @@ def clone(
 
     mkdir = not os.path.exists(target)
 
-    (client, path) = get_transport_and_path(
-        source, config=config, **kwargs)
+    (client, path) = get_transport_and_path(source, config=config, **kwargs)
+
+    if filter_spec:
+        filter_spec = filter_spec.encode("ascii")
 
     return client.clone(
         path,
@@ -549,6 +566,8 @@ def clone(
         branch=branch,
         progress=errstream.write,
         depth=depth,
+        filter_spec=filter_spec,
+        protocol_version=protocol_version,
     )
 
 
@@ -605,7 +624,7 @@ def _is_subdir(subdir, parentdir):
 
 
 # TODO: option to remove ignored files also, in line with `git clean -fdx`
-def clean(repo=".", target_dir=None):
+def clean(repo=".", target_dir=None) -> None:
     """Remove any untracked files from the target directory recursively.
 
     Equivalent to running ``git clean -fd`` in target_dir.
@@ -622,9 +641,7 @@ def clean(repo=".", target_dir=None):
             raise Error("target_dir must be in the repo's working dir")
 
         config = r.get_config_stack()
-        require_force = config.get_boolean(  # noqa: F841
-            (b"clean",), b"requireForce", True
-        )
+        config.get_boolean((b"clean",), b"requireForce", True)
 
         # TODO(jelmer): if require_force is set, then make sure that -f, -i or
         # -n is specified.
@@ -653,7 +670,7 @@ def clean(repo=".", target_dir=None):
                     os.remove(ap)
 
 
-def remove(repo=".", paths=None, cached=False):
+def remove(repo=".", paths=None, cached=False) -> None:
     """Remove files from the staging area.
 
     Args:
@@ -668,7 +685,7 @@ def remove(repo=".", paths=None, cached=False):
             try:
                 index_sha = index[tree_path].sha
             except KeyError as exc:
-                raise Error("%s did not match any files" % p) from exc
+                raise Error(f"{p} did not match any files") from exc
 
             if not cached:
                 try:
@@ -691,11 +708,11 @@ def remove(repo=".", paths=None, cached=False):
                         if blob.id != index_sha and index_sha != committed_sha:
                             raise Error(
                                 "file has staged content differing "
-                                "from both the file and head: %s" % p
+                                f"from both the file and head: {p}"
                             )
 
                         if index_sha != committed_sha:
-                            raise Error("file has staged changes: %s" % p)
+                            raise Error(f"file has staged changes: {p}")
                         os.remove(full_path)
             del index[tree_path]
         index.write()
@@ -720,7 +737,7 @@ def commit_encode(commit, contents, default_encoding=DEFAULT_ENCODING):
     return contents.encode(encoding)
 
 
-def print_commit(commit, decode, outstream=sys.stdout):
+def print_commit(commit, decode, outstream=sys.stdout) -> None:
     """Write a human-readable commit log entry.
 
     Args:
@@ -748,7 +765,7 @@ def print_commit(commit, decode, outstream=sys.stdout):
     outstream.write("\n")
 
 
-def print_tag(tag, decode, outstream=sys.stdout):
+def print_tag(tag, decode, outstream=sys.stdout) -> None:
     """Write a human-readable tag.
 
     Args:
@@ -766,7 +783,7 @@ def print_tag(tag, decode, outstream=sys.stdout):
     outstream.write("\n")
 
 
-def show_blob(repo, blob, decode, outstream=sys.stdout):
+def show_blob(repo, blob, decode, outstream=sys.stdout) -> None:
     """Write a blob to a stream.
 
     Args:
@@ -778,7 +795,7 @@ def show_blob(repo, blob, decode, outstream=sys.stdout):
     outstream.write(decode(blob.data))
 
 
-def show_commit(repo, commit, decode, outstream=sys.stdout):
+def show_commit(repo, commit, decode, outstream=sys.stdout) -> None:
     """Show a commit to a stream.
 
     Args:
@@ -799,7 +816,7 @@ def show_commit(repo, commit, decode, outstream=sys.stdout):
     outstream.write(commit_decode(commit, diffstream.getvalue()))
 
 
-def show_tree(repo, tree, decode, outstream=sys.stdout):
+def show_tree(repo, tree, decode, outstream=sys.stdout) -> None:
     """Print a tree to a stream.
 
     Args:
@@ -812,7 +829,7 @@ def show_tree(repo, tree, decode, outstream=sys.stdout):
         outstream.write(decode(n) + "\n")
 
 
-def show_tag(repo, tag, decode, outstream=sys.stdout):
+def show_tag(repo, tag, decode, outstream=sys.stdout) -> None:
     """Print a tag to a stream.
 
     Args:
@@ -860,7 +877,7 @@ def print_name_status(changes):
                 kind = "R"
             elif change.type == CHANGE_COPY:
                 kind = "C"
-        yield "%-8s%-20s%-20s" % (kind, path1, path2)
+        yield "%-8s%-20s%-20s" % (kind, path1, path2)  # noqa: UP031
 
 
 def log(
@@ -870,7 +887,7 @@ def log(
     max_entries=None,
     reverse=False,
     name_status=False,
-):
+) -> None:
     """Write commit logs.
 
     Args:
@@ -901,7 +918,7 @@ def show(
     objects=None,
     outstream=sys.stdout,
     default_encoding=DEFAULT_ENCODING,
-):
+) -> None:
     """Print the changes in a commit.
 
     Args:
@@ -931,7 +948,7 @@ def show(
             show_object(r, o, decode, outstream)
 
 
-def diff_tree(repo, old_tree, new_tree, outstream=default_bytes_out_stream):
+def diff_tree(repo, old_tree, new_tree, outstream=default_bytes_out_stream) -> None:
     """Compares the content and mode of blobs found via two tree objects.
 
     Args:
@@ -944,7 +961,7 @@ def diff_tree(repo, old_tree, new_tree, outstream=default_bytes_out_stream):
         write_tree_diff(outstream, r.object_store, old_tree, new_tree)
 
 
-def rev_list(repo, commits, outstream=sys.stdout):
+def rev_list(repo, commits, outstream=sys.stdout) -> None:
     """Lists commit objects in reverse chronological order.
 
     Args:
@@ -958,13 +975,13 @@ def rev_list(repo, commits, outstream=sys.stdout):
 
 
 def _canonical_part(url: str) -> str:
-    name = url.rsplit('/', 1)[-1]
-    if name.endswith('.git'):
+    name = url.rsplit("/", 1)[-1]
+    if name.endswith(".git"):
         name = name[:-4]
     return name
 
 
-def submodule_add(repo, url, path=None, name=None):
+def submodule_add(repo, url, path=None, name=None) -> None:
     """Add a new submodule.
 
     Args:
@@ -990,7 +1007,7 @@ def submodule_add(repo, url, path=None, name=None):
         config.write_to_path()
 
 
-def submodule_init(repo):
+def submodule_init(repo) -> None:
     """Initialize submodules.
 
     Args:
@@ -998,10 +1015,10 @@ def submodule_init(repo):
     """
     with open_repo_closing(repo) as r:
         config = r.get_config()
-        gitmodules_path = os.path.join(r.path, '.gitmodules')
+        gitmodules_path = os.path.join(r.path, ".gitmodules")
         for path, url, name in read_submodules(gitmodules_path):
-            config.set((b'submodule', name), b'active', True)
-            config.set((b'submodule', name), b'url', url)
+            config.set((b"submodule", name), b"active", True)
+            config.set((b"submodule", name), b"url", url)
         config.write_to_path()
 
 
@@ -1012,6 +1029,7 @@ def submodule_list(repo):
       repo: Path to repository
     """
     from .submodule import iter_cached_submodules
+
     with open_repo_closing(repo) as r:
         for path, sha in iter_cached_submodules(r.object_store, r[r.head()].tree):
             yield path, sha.decode(DEFAULT_ENCODING)
@@ -1027,8 +1045,8 @@ def tag_create(
     tag_time=None,
     tag_timezone=None,
     sign=False,
-    encoding=DEFAULT_ENCODING
-):
+    encoding=DEFAULT_ENCODING,
+) -> None:
     """Creates a tag in git via dulwich calls.
 
     Args:
@@ -1051,8 +1069,7 @@ def tag_create(
             # Create the tag object
             tag_obj = Tag()
             if author is None:
-                # TODO(jelmer): Don't use repo private method.
-                author = r._get_user_identity(r.get_config_stack())
+                author = get_user_identity(r.get_config_stack())
             tag_obj.tagger = author
             tag_obj.message = message + "\n".encode(encoding)
             tag_obj.name = tag
@@ -1088,7 +1105,7 @@ def tag_list(repo, outstream=sys.stdout):
         return tags
 
 
-def tag_delete(repo, name):
+def tag_delete(repo, name) -> None:
     """Remove a tag.
 
     Args:
@@ -1101,12 +1118,12 @@ def tag_delete(repo, name):
         elif isinstance(name, list):
             names = name
         else:
-            raise Error("Unexpected tag name type %r" % name)
+            raise Error(f"Unexpected tag name type {name!r}")
         for name in names:
             del r.refs[_make_tag_ref(name)]
 
 
-def reset(repo, mode, treeish="HEAD"):
+def reset(repo, mode, treeish="HEAD") -> None:
     """Reset current HEAD to the specified state.
 
     Args:
@@ -1124,7 +1141,7 @@ def reset(repo, mode, treeish="HEAD"):
 
 def get_remote_repo(
     repo: Repo, remote_location: Optional[Union[str, bytes]] = None
-) -> Tuple[Optional[str], str]:
+) -> tuple[Optional[str], str]:
     config = repo.get_config()
     if remote_location is None:
         remote_location = get_branch_remote(repo)
@@ -1153,8 +1170,8 @@ def push(
     outstream=default_bytes_out_stream,
     errstream=default_bytes_err_stream,
     force=False,
-    **kwargs
-):
+    **kwargs,
+) -> None:
     """Remote push with dulwich via dulwich.client.
 
     Args:
@@ -1183,7 +1200,7 @@ def push(
             selected_refs.extend(parse_reftuples(r.refs, refs, refspecs, force=force))
             new_refs = {}
             # TODO: Handle selected_refs == {None: None}
-            for (lh, rh, force_ref) in selected_refs:
+            for lh, rh, force_ref in selected_refs:
                 if lh is None:
                     new_refs[rh] = ZERO_SHA
                     remote_changed_refs[rh] = None
@@ -1191,9 +1208,7 @@ def push(
                     try:
                         localsha = r.refs[lh]
                     except KeyError as exc:
-                        raise Error(
-                            "No valid ref %s in local repository" % lh
-                        ) from exc
+                        raise Error(f"No valid ref {lh} in local repository") from exc
                     if not force_ref and rh in refs:
                         check_diverged(r, refs[rh], localsha)
                     new_refs[rh] = localsha
@@ -1238,26 +1253,35 @@ def pull(
     errstream=default_bytes_err_stream,
     fast_forward=True,
     force=False,
-    **kwargs
-):
+    filter_spec=None,
+    protocol_version=None,
+    **kwargs,
+) -> None:
     """Pull from remote via dulwich.client.
 
     Args:
       repo: Path to repository
       remote_location: Location of the remote
-      refspecs: refspecs to fetch
+      refspecs: refspecs to fetch. Can be a bytestring, a string, or a list of
+        bytestring/string.
       outstream: A stream file to write to output
       errstream: A stream file to write to errors
+      filter_spec: A git-rev-list-style object filter spec, as an ASCII string.
+        Only used if the server supports the Git protocol-v2 'filter'
+        feature, and ignored otherwise.
+      protocol_version: desired Git protocol version. By default the highest
+        mutually supported protocol version will be used
     """
     # Open the repo
     with open_repo_closing(repo) as r:
         (remote_name, remote_location) = get_remote_repo(r, remote_location)
 
-        if refspecs is None:
-            refspecs = [b"HEAD"]
         selected_refs = []
 
-        def determine_wants(remote_refs, **kwargs):
+        if refspecs is None:
+            refspecs = [b"HEAD"]
+
+        def determine_wants(remote_refs, *args, **kwargs):
             selected_refs.extend(
                 parse_reftuples(remote_refs, r.refs, refspecs, force=force)
             )
@@ -1270,10 +1294,17 @@ def pull(
         client, path = get_transport_and_path(
             remote_location, config=r.get_config_stack(), **kwargs
         )
+        if filter_spec:
+            filter_spec = filter_spec.encode("ascii")
         fetch_result = client.fetch(
-            path, r, progress=errstream.write, determine_wants=determine_wants
+            path,
+            r,
+            progress=errstream.write,
+            determine_wants=determine_wants,
+            filter_spec=filter_spec,
+            protocol_version=protocol_version,
         )
-        for (lh, rh, force_ref) in selected_refs:
+        for lh, rh, force_ref in selected_refs:
             if not force_ref and rh in r.refs:
                 try:
                     check_diverged(r, r.refs.follow(rh)[1], fetch_result.refs[lh])
@@ -1281,8 +1312,7 @@ def pull(
                     if fast_forward:
                         raise
                     else:
-                        raise NotImplementedError(
-                            "merge is not yet supported") from exc
+                        raise NotImplementedError("merge is not yet supported") from exc
             r.refs[rh] = fetch_result.refs[lh]
         if selected_refs:
             r[b"HEAD"] = fetch_result.refs[selected_refs[0][1]]
@@ -1465,7 +1495,7 @@ def get_tree_changes(repo):
         return tracked_changes
 
 
-def daemon(path=".", address=None, port=None):
+def daemon(path=".", address=None, port=None) -> None:
     """Run a daemon serving Git requests over TCP/IP.
 
     Args:
@@ -1479,7 +1509,7 @@ def daemon(path=".", address=None, port=None):
     server.serve_forever()
 
 
-def web_daemon(path=".", address=None, port=None):
+def web_daemon(path=".", address=None, port=None) -> None:
     """Run a daemon serving Git requests over HTTP.
 
     Args:
@@ -1506,7 +1536,7 @@ def web_daemon(path=".", address=None, port=None):
     server.serve_forever()
 
 
-def upload_pack(path=".", inf=None, outf=None):
+def upload_pack(path=".", inf=None, outf=None) -> int:
     """Upload a pack file after negotiating its contents using smart protocol.
 
     Args:
@@ -1521,7 +1551,7 @@ def upload_pack(path=".", inf=None, outf=None):
     path = os.path.expanduser(path)
     backend = FileSystemBackend(path)
 
-    def send_fn(data):
+    def send_fn(data) -> None:
         outf.write(data)
         outf.flush()
 
@@ -1532,7 +1562,7 @@ def upload_pack(path=".", inf=None, outf=None):
     return 0
 
 
-def receive_pack(path=".", inf=None, outf=None):
+def receive_pack(path=".", inf=None, outf=None) -> int:
     """Receive a pack file after negotiating its contents using smart protocol.
 
     Args:
@@ -1547,7 +1577,7 @@ def receive_pack(path=".", inf=None, outf=None):
     path = os.path.expanduser(path)
     backend = FileSystemBackend(path)
 
-    def send_fn(data):
+    def send_fn(data) -> None:
         outf.write(data)
         outf.flush()
 
@@ -1570,7 +1600,7 @@ def _make_tag_ref(name):
     return LOCAL_TAG_PREFIX + name
 
 
-def branch_delete(repo, name):
+def branch_delete(repo, name) -> None:
     """Delete a branch.
 
     Args:
@@ -1586,7 +1616,7 @@ def branch_delete(repo, name):
             del r.refs[_make_branch_ref(name)]
 
 
-def branch_create(repo, name, objectish=None, force=False):
+def branch_create(repo, name, objectish=None, force=False) -> None:
     """Create a branch.
 
     Args:
@@ -1605,7 +1635,7 @@ def branch_create(repo, name, objectish=None, force=False):
             r.refs.set_if_equals(refname, None, object.id, message=ref_message)
         else:
             if not r.refs.add_if_new(refname, object.id, message=ref_message):
-                raise Error("Branch with name %s already exists." % name)
+                raise Error(f"Branch with name {name} already exists.")
 
 
 def branch_list(repo):
@@ -1666,7 +1696,7 @@ def fetch(
     prune=False,
     prune_tags=False,
     force=False,
-    **kwargs
+    **kwargs,
 ):
     """Fetch objects from a remote server.
 
@@ -1702,6 +1732,60 @@ def fetch(
     return fetch_result
 
 
+def for_each_ref(
+    repo: Union[Repo, str] = ".",
+    pattern: Optional[Union[str, bytes]] = None,
+) -> list[tuple[bytes, bytes, bytes]]:
+    """Iterate over all refs that match the (optional) pattern.
+
+    Args:
+      repo: Path to the repository
+      pattern: Optional glob (7) patterns to filter the refs with
+    Returns:
+      List of bytes tuples with: (sha, object_type, ref_name)
+    """
+    if isinstance(pattern, str):
+        pattern = os.fsencode(pattern)
+
+    with open_repo_closing(repo) as r:
+        refs = r.get_refs()
+
+    if pattern:
+        matching_refs: dict[bytes, bytes] = {}
+        pattern_parts = pattern.split(b"/")
+        for ref, sha in refs.items():
+            matches = False
+
+            # git for-each-ref uses glob (7) style patterns, but fnmatch
+            # is greedy and also matches slashes, unlike glob.glob.
+            # We have to check parts of the pattern individually.
+            # See https://github.com/python/cpython/issues/72904
+            ref_parts = ref.split(b"/")
+            if len(ref_parts) > len(pattern_parts):
+                continue
+
+            for pat, ref_part in zip(pattern_parts, ref_parts):
+                matches = fnmatch.fnmatchcase(ref_part, pat)
+                if not matches:
+                    break
+
+            if matches:
+                matching_refs[ref] = sha
+
+        refs = matching_refs
+
+    ret: list[tuple[bytes, bytes, bytes]] = [
+        (sha, r.get_object(sha).type_name, ref)
+        for ref, sha in sorted(
+            refs.items(),
+            key=lambda ref_sha: ref_sha[0],
+        )
+        if ref != b"HEAD"
+    ]
+
+    return ret
+
+
 def ls_remote(remote, config: Optional[Config] = None, **kwargs):
     """List the refs in a remote.
 
@@ -1717,7 +1801,7 @@ def ls_remote(remote, config: Optional[Config] = None, **kwargs):
     return client.get_refs(host_path)
 
 
-def repack(repo):
+def repack(repo) -> None:
     """Repack loose files in a repository.
 
     Currently this only packs loose objects.
@@ -1729,7 +1813,15 @@ def repack(repo):
         r.object_store.pack_loose_objects()
 
 
-def pack_objects(repo, object_ids, packf, idxf, delta_window_size=None, deltify=None, reuse_deltas=True):
+def pack_objects(
+    repo,
+    object_ids,
+    packf,
+    idxf,
+    delta_window_size=None,
+    deltify=None,
+    reuse_deltas=True,
+) -> None:
     """Pack objects into a file.
 
     Args:
@@ -1762,7 +1854,7 @@ def ls_tree(
     outstream=sys.stdout,
     recursive=False,
     name_only=False,
-):
+) -> None:
     """List contents of a tree.
 
     Args:
@@ -1773,8 +1865,8 @@ def ls_tree(
       name_only: Only print item name
     """
 
-    def list_tree(store, treeid, base):
-        for (name, mode, sha) in store[treeid].iteritems():
+    def list_tree(store, treeid, base) -> None:
+        for name, mode, sha in store[treeid].iteritems():
             if base:
                 name = posixpath.join(base, name)
             if name_only:
@@ -1789,7 +1881,7 @@ def ls_tree(
         list_tree(r.object_store, tree.id, "")
 
 
-def remote_add(repo: Repo, name: Union[bytes, str], url: Union[bytes, str]):
+def remote_add(repo, name: Union[bytes, str], url: Union[bytes, str]) -> None:
     """Add a remote.
 
     Args:
@@ -1810,7 +1902,7 @@ def remote_add(repo: Repo, name: Union[bytes, str], url: Union[bytes, str]):
         c.write_to_path()
 
 
-def remote_remove(repo: Repo, name: Union[bytes, str]):
+def remote_remove(repo: Repo, name: Union[bytes, str]) -> None:
     """Remove a remote.
 
     Args:
@@ -1847,7 +1939,7 @@ def check_ignore(repo, paths, no_index=False):
                 yield path
 
 
-def update_head(repo, target, detached=False, new_branch=None):
+def update_head(repo, target, detached=False, new_branch=None) -> None:
     """Update HEAD to point at a new branch/commit.
 
     Note that this does not actually update the working tree.
@@ -1875,8 +1967,7 @@ def update_head(repo, target, detached=False, new_branch=None):
             r.refs.set_symbolic_ref(b"HEAD", to_set)
 
 
-def reset_file(repo, file_path: str, target: bytes = b'HEAD',
-               symlink_fn=None):
+def reset_file(repo, file_path: str, target: bytes = b"HEAD", symlink_fn=None) -> None:
     """Reset the file to specific commit or branch.
 
     Args:
@@ -1896,7 +1987,7 @@ def reset_file(repo, file_path: str, target: bytes = b'HEAD',
 
 def _update_head_during_checkout_branch(repo, target):
     checkout_target = None
-    if target == b'HEAD':  # Do not update head while trying to checkout to HEAD.
+    if target == b"HEAD":  # Do not update head while trying to checkout to HEAD.
         pass
     elif target in repo.refs.keys(base=LOCAL_BRANCH_PREFIX):
         update_head(repo, target)
@@ -1908,7 +1999,9 @@ def _update_head_during_checkout_branch(repo, target):
         if config.has_section(section):
             checkout_target = target.replace(name + b"/", b"")
             try:
-                branch_create(repo, checkout_target, (LOCAL_REMOTE_PREFIX + target).decode())
+                branch_create(
+                    repo, checkout_target, (LOCAL_REMOTE_PREFIX + target).decode()
+                )
             except Error:
                 pass
             update_head(repo, LOCAL_BRANCH_PREFIX + checkout_target)
@@ -1918,7 +2011,7 @@ def _update_head_during_checkout_branch(repo, target):
     return checkout_target
 
 
-def checkout_branch(repo, target: Union[bytes, str], force: bool = False):
+def checkout_branch(repo, target: Union[bytes, str], force: bool = False) -> None:
     """Switch branches or restore working tree files.
 
     The implementation of this function will probably not scale well
@@ -1941,7 +2034,14 @@ def checkout_branch(repo, target: Union[bytes, str], force: bool = False):
         _update_head_during_checkout_branch(repo, target)
     else:
         status_report = status(repo)
-        changes = list(set(status_report[0]['add'] + status_report[0]['delete'] + status_report[0]['modify'] + status_report[1]))
+        changes = list(
+            set(
+                status_report[0]["add"]
+                + status_report[0]["delete"]
+                + status_report[0]["modify"]
+                + status_report[1]
+            )
+        )
         index = 0
         while index < len(changes):
             change = changes[index]
@@ -1951,7 +2051,10 @@ def checkout_branch(repo, target: Union[bytes, str], force: bool = False):
                     target_tree.lookup_path(repo.object_store.__getitem__, change)
                     index += 1
                 except KeyError:
-                    raise CheckoutError('Your local changes to the following files would be overwritten by checkout: ' + change.decode())
+                    raise CheckoutError(
+                        "Your local changes to the following files would be overwritten by checkout: "
+                        + change.decode()
+                    )
             except KeyError:
                 changes.pop(index)
 
@@ -2041,7 +2144,7 @@ def stash_list(repo):
         return enumerate(list(stash.stashes()))
 
 
-def stash_push(repo):
+def stash_push(repo) -> None:
     """Push a new stash onto the stack."""
     with open_repo_closing(repo) as r:
         from .stash import Stash
@@ -2050,16 +2153,16 @@ def stash_push(repo):
         stash.push()
 
 
-def stash_pop(repo, index):
+def stash_pop(repo) -> None:
     """Pop a stash from the stack."""
     with open_repo_closing(repo) as r:
         from .stash import Stash
 
         stash = Stash.from_repo(r)
-        stash.pop(index)
+        stash.pop()
 
 
-def stash_drop(repo, index):
+def stash_drop(repo, index) -> None:
     """Drop a stash from the stack."""
     with open_repo_closing(repo) as r:
         from .stash import Stash

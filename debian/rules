@@ -1,5 +1,6 @@
 #!/usr/bin/make -f
 
+export CARGO_HOME=$(shell pwd)/debian/cargo_home
 DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/buildflags.mk
 
@@ -12,9 +13,14 @@ ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 endif
 
 override_dh_auto_clean:
+	if test -f Cargo.lock.saved; then mv Cargo.lock.saved Cargo.lock; fi
 	dh_auto_clean
 	rm -rf build*
 	rm -f dulwich/*.so dulwich/*.o
+
+override_dh_auto_build:
+	mv Cargo.lock Cargo.lock.saved
+	dh_auto_build
 
 override_dh_installdocs:
 	dh_installdocs -ppython3-dulwich docs/tutorial -X.gitignore -XMakefile

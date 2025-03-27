@@ -2,6 +2,7 @@
 # Copyright (C) 2007 James Westby <jw+debian@jameswestby.net>
 # Copyright (C) 2009-2012 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -24,7 +25,6 @@
 
 # Please do not add more errors here, but instead add them close to the code
 # that raises the error.
-
 
 import binascii
 
@@ -96,14 +96,14 @@ class MissingCommitError(Exception):
 
     def __init__(self, sha, *args, **kwargs) -> None:
         self.sha = sha
-        Exception.__init__(self, "%s is not in the revision store" % sha)
+        Exception.__init__(self, f"{sha} is not in the revision store")
 
 
 class ObjectMissing(Exception):
     """Indicates that a requested object is missing."""
 
     def __init__(self, sha, *args, **kwargs) -> None:
-        Exception.__init__(self, "%s is not in the pack" % sha)
+        Exception.__init__(self, f"{sha} is not in the pack")
 
 
 class ApplyDeltaError(Exception):
@@ -145,9 +145,7 @@ class HangupException(GitProtocolError):
                 )
             )
         else:
-            super().__init__(
-                "The remote server unexpectedly closed the connection."
-            )
+            super().__init__("The remote server unexpectedly closed the connection.")
         self.stderr_lines = stderr_lines
 
     def __eq__(self, other):
@@ -161,10 +159,8 @@ class UnexpectedCommandError(GitProtocolError):
         if command is None:
             command = "flush-pkt"
         else:
-            command = "command %s" % command
-        super().__init__(
-            "Protocol got unexpected %s" % command
-        )
+            command = f"command {command}"
+        super().__init__(f"Protocol got unexpected {command}")
 
 
 class FileFormatException(Exception):

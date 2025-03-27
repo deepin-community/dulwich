@@ -1,6 +1,7 @@
 # line_ending.py -- Line ending conversion functions
 # Copyright (C) 2018-2018 Boris Feld <boris.feld@comet.ml>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -288,8 +289,7 @@ class TreeBlobNormalizer(BlobNormalizer):
         super().__init__(config_stack, git_attributes)
         if tree:
             self.existing_paths = {
-                name
-                for name, _, _ in iter_tree_contents(object_store, tree)
+                name for name, _, _ in iter_tree_contents(object_store, tree)
             }
         else:
             self.existing_paths = set()

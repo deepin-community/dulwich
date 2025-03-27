@@ -2,6 +2,7 @@
 # Copyright (C) 2008 John Carr <john.carr@unrouted.co.uk>
 # Copyright (C) 2008-2012 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -23,12 +24,29 @@
 
 from io import BytesIO
 from os import SEEK_END
+from typing import Optional
 
 import dulwich
 
 from .errors import GitProtocolError, HangupException
 
 TCP_GIT_PORT = 9418
+
+# Git protocol version 0 is the original Git protocol, which lacked a
+# version number until Git protocol version 1 was introduced by Brandon
+# Williams in 2017.
+#
+# Protocol version 1 is simply the original v0 protocol with the addition of
+# a single packet line, which precedes the ref advertisement, indicating the
+# protocol version being used. This was done in preparation for protocol v2.
+#
+# Git protocol version 2 was first introduced by Brandon Williams in 2018 and
+# adds many features. See the gitprotocol-v2(5) manual page for details.
+# As of 2024, Git only implements version 2 during 'git fetch' and still uses
+# version 0 during 'git push'.
+GIT_PROTOCOL_VERSIONS = [0, 1, 2]
+DEFAULT_GIT_PROTOCOL_VERSION_FETCH = 2
+DEFAULT_GIT_PROTOCOL_VERSION_SEND = 0
 
 ZERO_SHA = b"0" * 40
 
@@ -64,6 +82,8 @@ CAPABILITY_AGENT = b"agent"
 CAPABILITY_SYMREF = b"symref"
 CAPABILITY_ALLOW_TIP_SHA1_IN_WANT = b"allow-tip-sha1-in-want"
 CAPABILITY_ALLOW_REACHABLE_SHA1_IN_WANT = b"allow-reachable-sha1-in-want"
+CAPABILITY_FETCH = b"fetch"
+CAPABILITY_FILTER = b"filter"
 
 # Magic ref that is used to attach capabilities to when
 # there are no refs. Should always be ste to ZERO_SHA.
@@ -77,8 +97,8 @@ COMMON_CAPABILITIES = [
     CAPABILITY_NO_PROGRESS,
 ]
 KNOWN_UPLOAD_CAPABILITIES = set(
-    COMMON_CAPABILITIES
-    + [
+    [
+        *COMMON_CAPABILITIES,
         CAPABILITY_THIN_PACK,
         CAPABILITY_MULTI_ACK,
         CAPABILITY_MULTI_ACK_DETAILED,
@@ -90,11 +110,12 @@ KNOWN_UPLOAD_CAPABILITIES = set(
         CAPABILITY_DEEPEN_RELATIVE,
         CAPABILITY_ALLOW_TIP_SHA1_IN_WANT,
         CAPABILITY_ALLOW_REACHABLE_SHA1_IN_WANT,
+        CAPABILITY_FETCH,
     ]
 )
 KNOWN_RECEIVE_CAPABILITIES = set(
-    COMMON_CAPABILITIES
-    + [
+    [
+        *COMMON_CAPABILITIES,
         CAPABILITY_REPORT_STATUS,
         CAPABILITY_DELETE_REFS,
         CAPABILITY_QUIET,
@@ -166,6 +187,25 @@ def pkt_line(data):
     return ("%04x" % (len(data) + 4)).encode("ascii") + data
 
 
+def pkt_seq(*seq):
+    """Wrap a sequence of data in pkt-lines.
+
+    Args:
+      seq: An iterable of strings to wrap.
+    """
+    return b"".join([pkt_line(s) for s in seq]) + pkt_line(None)
+
+
+def filter_ref_prefix(refs, prefixes):
+    """Filter refs to only include those with a given prefix.
+
+    Args:
+      refs: A list of refs.
+      prefix: The prefix to filter by.
+    """
+    return {k: v for k, v in refs.items() if any(k.startswith(p) for p in prefixes)}
+
+
 class Protocol:
     """Class for interacting with a remote git process over the wire.
 
@@ -183,9 +223,9 @@ class Protocol:
         self.write = write
         self._close = close
         self.report_activity = report_activity
-        self._readahead = None
+        self._readahead: Optional[BytesIO] = None
 
-    def close(self):
+    def close(self) -> None:
         if self._close:
             self._close()
 
@@ -201,7 +241,7 @@ class Protocol:
         This method may read from the readahead buffer; see unread_pkt_line.
 
         Returns: The next string from the stream, without the length prefix, or
-            None for a flush-pkt ('0000').
+            None for a flush-pkt ('0000') or delim-pkt ('0001').
         """
         if self._readahead is None:
             read = self.read
@@ -212,9 +252,9 @@ class Protocol:
         try:
             sizestr = read(4)
             if not sizestr:
-                raise HangupException()
+                raise HangupException
             size = int(sizestr, 16)
-            if size == 0:
+            if size == 0 or size == 1:  # flush-pkt or delim-pkt
                 if self.report_activity:
                     self.report_activity(4, "read")
                 return None
@@ -222,7 +262,7 @@ class Protocol:
                 self.report_activity(size, "read")
             pkt_contents = read(size - 4)
         except ConnectionResetError as exc:
-            raise HangupException() from exc
+            raise HangupException from exc
         except OSError as exc:
             raise GitProtocolError(str(exc)) from exc
         else:
@@ -232,7 +272,7 @@ class Protocol:
                 )
             return pkt_contents
 
-    def eof(self):
+    def eof(self) -> bool:
         """Test whether the protocol stream has reached EOF.
 
         Note that this refers to the actual stream EOF and not just a
@@ -247,7 +287,7 @@ class Protocol:
         self.unread_pkt_line(next_line)
         return False
 
-    def unread_pkt_line(self, data):
+    def unread_pkt_line(self, data) -> None:
         """Unread a single line of data into the readahead buffer.
 
         This method can be used to unread a single pkt-line into a fixed
@@ -274,7 +314,7 @@ class Protocol:
             yield pkt
             pkt = self.read_pkt_line()
 
-    def write_pkt_line(self, line):
+    def write_pkt_line(self, line) -> None:
         """Sends a pkt-line to the remote git process.
 
         Args:
@@ -289,7 +329,7 @@ class Protocol:
         except OSError as exc:
             raise GitProtocolError(str(exc)) from exc
 
-    def write_sideband(self, channel, blob):
+    def write_sideband(self, channel, blob) -> None:
         """Write multiplexed data to the sideband.
 
         Args:
@@ -303,7 +343,7 @@ class Protocol:
             self.write_pkt_line(bytes(bytearray([channel])) + blob[:65515])
             blob = blob[65515:]
 
-    def send_cmd(self, cmd, *args):
+    def send_cmd(self, cmd, *args) -> None:
         """Send a command and some arguments to a git server.
 
         Only used for the TCP git protocol (git://).
@@ -343,9 +383,7 @@ class ReceivableProtocol(Protocol):
     def __init__(
         self, recv, write, close=None, report_activity=None, rbufsize=_RBUFSIZE
     ) -> None:
-        super().__init__(
-            self.read, write, close=close, report_activity=report_activity
-        )
+        super().__init__(self.read, write, close=close, report_activity=report_activity)
         self._recv = recv
         self._rbuf = BytesIO()
         self._rbufsize = rbufsize
@@ -403,7 +441,7 @@ class ReceivableProtocol(Protocol):
                 buf.write(data)
                 del data  # explicit free
                 break
-            assert n <= left, "_recv(%d) returned %d bytes" % (left, n)
+            assert n <= left, f"_recv({left}) returned {n} bytes"
             buf.write(data)
             buf_len += n
             del data  # explicit free
@@ -495,7 +533,7 @@ class BufferedPktLineWriter:
         self._wbuf = BytesIO()
         self._buflen = 0
 
-    def write(self, data):
+    def write(self, data) -> None:
         """Write data, wrapping it in a pkt-line."""
         line = pkt_line(data)
         line_len = len(line)
@@ -510,7 +548,7 @@ class BufferedPktLineWriter:
         self._wbuf.write(saved)
         self._buflen += len(saved)
 
-    def flush(self):
+    def flush(self) -> None:
         """Flush all data from the buffer."""
         data = self._wbuf.getvalue()
         if data:
@@ -526,7 +564,7 @@ class PktLineParser:
         self.handle_pkt = handle_pkt
         self._readahead = BytesIO()
 
-    def parse(self, data):
+    def parse(self, data) -> None:
         """Parse a fragment of data and call back for any completed packets."""
         self._readahead.write(data)
         buf = self._readahead.getvalue()
@@ -558,10 +596,7 @@ def format_ref_line(ref, sha, capabilities=None):
     if capabilities is None:
         return sha + b" " + ref + b"\n"
     else:
-        return (
-            sha + b" " + ref + b"\0"
-            + format_capability_line(capabilities)
-            + b"\n")
+        return sha + b" " + ref + b"\0" + format_capability_line(capabilities) + b"\n"
 
 
 def format_shallow_line(sha):

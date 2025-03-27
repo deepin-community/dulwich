@@ -2,6 +2,7 @@
 # Copyright (C) 2015 Jonas Haag <jonas@lophus.org>
 # Copyright (C) 2015 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -84,7 +85,7 @@ def tar_stream(store, tree, mtime, prefix=b"", format=""):
       Bytestrings
     """
     buf = BytesIO()
-    with closing(tarfile.open(None, "w:%s" % format, buf)) as tar:
+    with closing(tarfile.open(None, f"w:{format}", buf)) as tar:
         if format == "gz":
             # Manually correct the gzip header file modification time so that
             # archives created from the same Git tree are always identical.
@@ -108,7 +109,7 @@ def tar_stream(store, tree, mtime, prefix=b"", format=""):
 
             info = tarfile.TarInfo()
             # tarfile only works with ascii.
-            info.name = entry_abspath.decode('utf-8', 'surrogateescape')
+            info.name = entry_abspath.decode("utf-8", "surrogateescape")
             info.size = blob.raw_length()
             info.mode = entry.mode
             info.mtime = mtime

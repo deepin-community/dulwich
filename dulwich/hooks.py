@@ -1,6 +1,7 @@
 # hooks.py -- for dealing with git hooks
 # Copyright (C) 2012-2013 Jelmer Vernooij and others.
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -88,9 +89,7 @@ class ShellHook(Hook):
         """Execute the hook with given args."""
         if len(args) != self.numparam:
             raise HookError(
-                "Hook %s executed with wrong number of args. \
-                            Expected %d. Saw %d. args: %s"
-                % (self.name, self.numparam, len(args), args)
+                f"Hook {self.name} executed with wrong number of args. Expected {self.numparam}. Saw {len(args)}. args: {args}"
             )
 
         if self.pre_exec_callback is not None:
@@ -98,14 +97,12 @@ class ShellHook(Hook):
 
         try:
             ret = subprocess.call(
-                [os.path.relpath(self.filepath, self.cwd)] + list(args),
-                cwd=self.cwd)
+                [os.path.relpath(self.filepath, self.cwd), *list(args)], cwd=self.cwd
+            )
             if ret != 0:
                 if self.post_exec_callback is not None:
                     self.post_exec_callback(0, *args)
-                raise HookError(
-                    "Hook %s exited with non-zero status %d" % (self.name, ret)
-                )
+                raise HookError(f"Hook {self.name} exited with non-zero status {ret}")
             if self.post_exec_callback is not None:
                 return self.post_exec_callback(1, *args)
         except OSError:  # no file. silent failure.
@@ -193,7 +190,7 @@ class PostReceiveShellHook(ShellHook):
             if (p.returncode != 0) or err_data:
                 err_fmt = b"post-receive exit code: %d\n" + b"stdout:\n%s\nstderr:\n%s"
                 err_msg = err_fmt % (p.returncode, out_data, err_data)
-                raise HookError(err_msg.decode('utf-8', 'backslashreplace'))
+                raise HookError(err_msg.decode("utf-8", "backslashreplace"))
             return out_data
         except OSError as err:
             raise HookError(repr(err)) from err

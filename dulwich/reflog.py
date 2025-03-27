@@ -1,6 +1,7 @@
 # reflog.py -- Parsing and writing reflog files
 # Copyright (C) 2015 Jelmer Vernooij and others.
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -90,7 +91,7 @@ def read_reflog(f):
         yield parse_reflog_line(line)
 
 
-def drop_reflog_entry(f, index, rewrite=False):
+def drop_reflog_entry(f, index, rewrite=False) -> None:
     """Drop the specified reflog entry.
 
     Args:
@@ -100,7 +101,7 @@ def drop_reflog_entry(f, index, rewrite=False):
             old SHA to the new SHA of the entry that now precedes it
     """
     if index < 0:
-        raise ValueError("Invalid reflog index %d" % index)
+        raise ValueError(f"Invalid reflog index {index}")
 
     log = []
     offset = f.tell()

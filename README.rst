@@ -10,17 +10,19 @@ doesn't call out to git directly but instead uses pure Python.
 
 **License**: Apache License, version 2 or GNU General Public License, version 2 or later.
 
+SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+
 The project is named after the part of London that Mr. and Mrs. Git live in
-in the particular Monty Python sketch.
+the particular Monty Python sketch.
 
 Installation
 ------------
 
-By default, Dulwich' setup.py will attempt to build and install the optional C
+By default, Dulwich' setup.py will attempt to build and install the optional Rust
 extensions. The reason for this is that they significantly improve the performance
 since some low-level operations that are executed often are much slower in CPython.
 
-If you don't want to install the C bindings, specify the --pure argument to setup.py::
+If you don't want to install the Rust bindings, specify the --pure argument to setup.py::
 
     $ python setup.py --pure install
 
@@ -87,5 +89,5 @@ file and `list of open issues <https://github.com/dulwich/dulwich/issues>`_.
 Supported versions of Python
 ----------------------------
 
-At the moment, Dulwich supports (and is tested on) CPython 3.6 and later and
+At the moment, Dulwich supports (and is tested on) CPython 3.9 and later and
 Pypy.

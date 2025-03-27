@@ -1,7 +1,5 @@
 PYTHON = python3
-PYFLAKES = $(PYTHON) -m pyflakes
-PEP8 = pep8
-FLAKE8 ?= $(PYTHON) -m flake8
+RUFF ?= $(PYTHON) -m ruff 
 SETUP = $(PYTHON) setup.py
 TESTRUNNER ?= unittest
 RUNTEST = PYTHONHASHSEED=random PYTHONPATH=$(shell pwd)$(if $(PYTHONPATH),:$(PYTHONPATH),) $(PYTHON) -m $(TESTRUNNER) $(TEST_OPTIONS)
@@ -24,22 +22,22 @@ install::
 	$(SETUP) install --root="$(DESTDIR)"
 
 check:: build
-	$(RUNTEST) dulwich.tests.test_suite
+	$(RUNTEST) tests.test_suite
 
 check-tutorial:: build
-	$(RUNTEST) dulwich.tests.tutorial_test_suite
+	$(RUNTEST) tests.tutorial_test_suite
 
 check-nocompat:: build
-	$(RUNTEST) dulwich.tests.nocompat_test_suite
+	$(RUNTEST) tests.nocompat_test_suite
 
 check-compat:: build
-	$(RUNTEST) dulwich.tests.compat_test_suite
+	$(RUNTEST) tests.compat_test_suite
 
 check-pypy:: clean
 	$(MAKE) check-noextensions PYTHON=pypy
 
 check-noextensions:: clean
-	$(RUNTEST) dulwich.tests.test_suite
+	$(RUNTEST) tests.test_suite
 
 check-contrib:: clean
 	$(RUNTEST) -v dulwich.contrib.test_suite
@@ -47,26 +45,17 @@ check-contrib:: clean
 check-all: check check-pypy check-noextensions
 
 typing:
-	mypy dulwich
+	$(PYTHON) -m mypy dulwich
 
 clean::
 	$(SETUP) clean --all
 	rm -f dulwich/*.so
 
-flakes:
-	$(PYFLAKES) dulwich
-
-pep8:
-	$(PEP8) dulwich
-
 style:
-	$(FLAKE8)
-
-before-push: check
-	git diff origin/master | $(PEP8) --diff
+	$(RUFF) check .
 
 coverage:
-	$(COVERAGE) run -m unittest dulwich.tests.test_suite dulwich.contrib.test_suite
+	$(COVERAGE) run -m unittest tests.test_suite dulwich.contrib.test_suite
 
 coverage-html: coverage
 	$(COVERAGE) html
@@ -78,3 +67,11 @@ apidocs:
 
 fix:
 	ruff check --fix .
+
+reformat:
+	ruff format .
+
+.PHONY: codespell
+
+codespell:
+	codespell --config .codespellrc .

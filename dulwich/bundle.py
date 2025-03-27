@@ -1,6 +1,7 @@
 # bundle.py -- Bundle format support
 # Copyright (C) 2020 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -20,25 +21,27 @@
 
 """Bundle format support."""
 
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from collections.abc import Sequence
+from typing import Optional, Union
 
 from .pack import PackData, write_pack_data
 
 
 class Bundle:
+    version: Optional[int]
 
-    version: Optional[int] = None
-
-    capabilities: Dict[str, str] = {}
-    prerequisites: List[Tuple[bytes, str]] = []
-    references: Dict[str, bytes] = {}
-    pack_data: Union[PackData, Sequence[bytes]] = []
+    capabilities: dict[str, str]
+    prerequisites: list[tuple[bytes, str]]
+    references: dict[str, bytes]
+    pack_data: Union[PackData, Sequence[bytes]]
 
     def __repr__(self) -> str:
-        return (f"<{type(self).__name__}(version={self.version}, "
-                f"capabilities={self.capabilities}, "
-                f"prerequisites={self.prerequisites}, "
-                f"references={self.references})>")
+        return (
+            f"<{type(self).__name__}(version={self.version}, "
+            f"capabilities={self.capabilities}, "
+            f"prerequisites={self.prerequisites}, "
+            f"references={self.references})>"
+        )
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):
@@ -98,10 +101,10 @@ def read_bundle(f):
         return _read_bundle(f, 2)
     if firstline == b"# v3 git bundle\n":
         return _read_bundle(f, 3)
-    raise AssertionError("unsupported bundle format header: %r" % firstline)
+    raise AssertionError(f"unsupported bundle format header: {firstline!r}")
 
 
-def write_bundle(f, bundle):
+def write_bundle(f, bundle) -> None:
     version = bundle.version
     if version is None:
         if bundle.capabilities:
@@ -113,16 +116,20 @@ def write_bundle(f, bundle):
     elif version == 3:
         f.write(b"# v3 git bundle\n")
     else:
-        raise AssertionError("unknown version %d" % version)
+        raise AssertionError(f"unknown version {version}")
     if version == 3:
         for key, value in bundle.capabilities.items():
             f.write(b"@" + key.encode("utf-8"))
             if value is not None:
                 f.write(b"=" + value.encode("utf-8"))
             f.write(b"\n")
-    for (obj_id, comment) in bundle.prerequisites:
+    for obj_id, comment in bundle.prerequisites:
         f.write(b"-%s %s\n" % (obj_id, comment.encode("utf-8")))
     for ref, obj_id in bundle.references.items():
         f.write(b"%s %s\n" % (obj_id, ref))
     f.write(b"\n")
-    write_pack_data(f.write, num_records=len(bundle.pack_data), records=bundle.pack_data.iter_unpacked())
+    write_pack_data(
+        f.write,
+        num_records=len(bundle.pack_data),
+        records=bundle.pack_data.iter_unpacked(),
+    )
