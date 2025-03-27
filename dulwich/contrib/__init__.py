@@ -1,6 +1,7 @@
 # __init__.py -- Contrib module for Dulwich
 # Copyright (C) 2014 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -18,15 +19,3 @@
 # License, Version 2.0.
 #
 
-
-def test_suite():
-    import unittest
-
-    names = [
-        "paramiko_vendor",
-        "release_robot",
-        "swift",
-    ]
-    module_names = ["dulwich.contrib.test_" + name for name in names]
-    loader = unittest.TestLoader()
-    return loader.loadTestsFromNames(module_names)

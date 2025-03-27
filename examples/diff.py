@@ -1,4 +1,6 @@
 #!/usr/bin/python
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+
 # This trivial script demonstrates how to extract the unified diff for a single
 # commit in a local repository.
 #
@@ -17,5 +19,5 @@ r = Repo(repo_path)
 
 commit = r[commit_id]
 parent_commit = r[commit.parents[0]]
-outstream = getattr(sys.stdout, 'buffer', sys.stdout)
+outstream = getattr(sys.stdout, "buffer", sys.stdout)
 write_tree_diff(outstream, r.object_store, parent_commit.tree, commit.tree)

@@ -1,6 +1,7 @@
 # patch.py -- For dealing with packed-style patches.
 # Copyright (C) 2009-2013 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -35,7 +36,9 @@ from .pack import ObjectContainer
 FIRST_FEW_BYTES = 8000
 
 
-def write_commit_patch(f, commit, contents, progress, version=None, encoding=None):
+def write_commit_patch(
+    f, commit, contents, progress, version=None, encoding=None
+) -> None:
     """Write a individual file patch.
 
     Args:
@@ -61,9 +64,7 @@ def write_commit_patch(f, commit, contents, progress, version=None, encoding=Non
         b"Date: " + time.strftime("%a, %d %b %Y %H:%M:%S %Z").encode(encoding) + b"\n"
     )
     f.write(
-        ("Subject: [PATCH %d/%d] " % (num, total)).encode(encoding)
-        + commit.message
-        + b"\n"
+        (f"Subject: [PATCH {num}/{total}] ").encode(encoding) + commit.message + b"\n"
     )
     f.write(b"\n")
     f.write(b"---\n")
@@ -101,7 +102,7 @@ def get_summary(commit):
 
 
 #  Unified Diff
-def _format_range_unified(start, stop):
+def _format_range_unified(start, stop) -> str:
     """Convert range to the "ed" format."""
     # Per the diff spec at http://www.unix.org/single_unix_specification/
     beginning = start + 1  # lines start numbering with one
@@ -136,19 +137,17 @@ def unified_diff(
             started = True
             fromdate = f"\t{fromfiledate}" if fromfiledate else ""
             todate = f"\t{tofiledate}" if tofiledate else ""
-            yield "--- {}{}{}".format(
-                fromfile.decode(tree_encoding), fromdate, lineterm
-            ).encode(output_encoding)
-            yield "+++ {}{}{}".format(
-                tofile.decode(tree_encoding), todate, lineterm
-            ).encode(output_encoding)
+            yield f"--- {fromfile.decode(tree_encoding)}{fromdate}{lineterm}".encode(
+                output_encoding
+            )
+            yield f"+++ {tofile.decode(tree_encoding)}{todate}{lineterm}".encode(
+                output_encoding
+            )
 
         first, last = group[0], group[-1]
         file1_range = _format_range_unified(first[1], last[2])
         file2_range = _format_range_unified(first[3], last[4])
-        yield f"@@ -{file1_range} +{file2_range} @@{lineterm}".encode(
-            output_encoding
-        )
+        yield f"@@ -{file1_range} +{file2_range} @@{lineterm}".encode(output_encoding)
 
         for tag, i1, i2, j1, j2 in group:
             if tag == "equal":
@@ -190,7 +189,9 @@ def patch_filename(p, root):
         return root + b"/" + p
 
 
-def write_object_diff(f, store: ObjectContainer, old_file, new_file, diff_binary=False):
+def write_object_diff(
+    f, store: ObjectContainer, old_file, new_file, diff_binary=False
+) -> None:
     """Write the diff for an object.
 
     Args:
@@ -270,18 +271,18 @@ def gen_diff_header(paths, modes, shas):
     if old_mode != new_mode:
         if new_mode is not None:
             if old_mode is not None:
-                yield ("old file mode %o\n" % old_mode).encode("ascii")
-            yield ("new file mode %o\n" % new_mode).encode("ascii")
+                yield (f"old file mode {old_mode:o}\n").encode("ascii")
+            yield (f"new file mode {new_mode:o}\n").encode("ascii")
         else:
-            yield ("deleted file mode %o\n" % old_mode).encode("ascii")
+            yield (f"deleted file mode {old_mode:o}\n").encode("ascii")
     yield b"index " + shortid(old_sha) + b".." + shortid(new_sha)
     if new_mode is not None and old_mode is not None:
-        yield (" %o" % new_mode).encode("ascii")
+        yield (f" {new_mode:o}").encode("ascii")
     yield b"\n"
 
 
 # TODO(jelmer): Support writing unicode, rather than bytes.
-def write_blob_diff(f, old_file, new_file):
+def write_blob_diff(f, old_file, new_file) -> None:
     """Write blob diff.
 
     Args:
@@ -316,7 +317,7 @@ def write_blob_diff(f, old_file, new_file):
     )
 
 
-def write_tree_diff(f, store, old_tree, new_tree, diff_binary=False):
+def write_tree_diff(f, store, old_tree, new_tree, diff_binary=False) -> None:
     """Write tree diff.
 
     Args:

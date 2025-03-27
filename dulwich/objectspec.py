@@ -1,6 +1,7 @@
 # objectspec.py -- Object specification
 # Copyright (C) 2014 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -20,10 +21,12 @@
 
 """Object specification."""
 
-from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Optional, Union
+
+from .objects import Commit, ShaFile, Tree
 
 if TYPE_CHECKING:
-    from .objects import Commit, ShaFile, Tree
     from .refs import Ref, RefsContainer
     from .repo import Repo
 
@@ -69,7 +72,9 @@ def parse_tree(repo: "Repo", treeish: Union[bytes, str]) -> "Tree":
     return o
 
 
-def parse_ref(container: Union["Repo", "RefsContainer"], refspec: Union[str, bytes]) -> "Ref":
+def parse_ref(
+    container: Union["Repo", "RefsContainer"], refspec: Union[str, bytes]
+) -> "Ref":
     """Parse a string referring to a reference.
 
     Args:
@@ -95,9 +100,11 @@ def parse_ref(container: Union["Repo", "RefsContainer"], refspec: Union[str, byt
 
 
 def parse_reftuple(
-        lh_container: Union["Repo", "RefsContainer"],
-        rh_container: Union["Repo", "RefsContainer"], refspec: Union[str, bytes],
-        force: bool = False) -> Tuple[Optional["Ref"], Optional["Ref"], bool]:
+    lh_container: Union["Repo", "RefsContainer"],
+    rh_container: Union["Repo", "RefsContainer"],
+    refspec: Union[str, bytes],
+    force: bool = False,
+) -> tuple[Optional["Ref"], Optional["Ref"], bool]:
     """Parse a reftuple spec.
 
     Args:
@@ -135,10 +142,11 @@ def parse_reftuple(
 
 
 def parse_reftuples(
-        lh_container: Union["Repo", "RefsContainer"],
-        rh_container: Union["Repo", "RefsContainer"],
-        refspecs: Union[bytes, List[bytes]],
-        force: bool = False):
+    lh_container: Union["Repo", "RefsContainer"],
+    rh_container: Union["Repo", "RefsContainer"],
+    refspecs: Union[bytes, list[bytes]],
+    force: bool = False,
+):
     """Parse a list of reftuple specs to a list of reftuples.
 
     Args:
@@ -178,7 +186,9 @@ def parse_refs(container, refspecs):
     return ret
 
 
-def parse_commit_range(repo: "Repo", committishs: Union[str, bytes]) -> Iterator["Commit"]:
+def parse_commit_range(
+    repo: "Repo", committishs: Union[str, bytes]
+) -> Iterator["Commit"]:
     """Parse a string referring to a range of commits.
 
     Args:
@@ -202,14 +212,13 @@ class AmbiguousShortId(Exception):
         self.options = options
 
 
-def scan_for_short_id(object_store, prefix):
+def scan_for_short_id(object_store, prefix, tp):
     """Scan an object store for a short id."""
-    # TODO(jelmer): This could short-circuit looking for objects
-    # starting with a certain prefix.
     ret = []
-    for object_id in object_store:
-        if object_id.startswith(prefix):
-            ret.append(object_store[object_id])
+    for object_id in object_store.iter_prefix(prefix):
+        o = object_store[object_id]
+        if isinstance(o, tp):
+            ret.append(o)
     if not ret:
         raise KeyError(prefix)
     if len(ret) == 1:
@@ -244,7 +253,7 @@ def parse_commit(repo: "Repo", committish: Union[str, bytes]) -> "Commit":
             pass
         else:
             try:
-                return scan_for_short_id(repo.object_store, committish)
+                return scan_for_short_id(repo.object_store, committish, Commit)
             except KeyError:
                 pass
     raise KeyError(committish)

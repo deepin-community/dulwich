@@ -1,6 +1,7 @@
 # paramiko_vendor.py -- paramiko implementation of the SSHVendor interface
 # Copyright (C) 2013 Aaron O'Mullan <aaron.omullan@friendco.de>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -44,7 +45,7 @@ class _ParamikoWrapper:
 
     @property
     def stderr(self):
-        return self.channel.makefile_stderr('rb')
+        return self.channel.makefile_stderr("rb")
 
     def can_read(self):
         return self.channel.recv_ready()
@@ -66,7 +67,7 @@ class _ParamikoWrapper:
             return data + self.read(diff_len)
         return data
 
-    def close(self):
+    def close(self) -> None:
         self.channel.close()
 
 
@@ -85,9 +86,9 @@ class ParamikoSSHVendor:
         password=None,
         pkey=None,
         key_filename=None,
-        **kwargs
+        protocol_version=None,
+        **kwargs,
     ):
-
         client = paramiko.SSHClient()
 
         connection_kwargs = {"hostname": host}
@@ -110,6 +111,9 @@ class ParamikoSSHVendor:
 
         # Open SSH session
         channel = client.get_transport().open_session()
+
+        if protocol_version is None or protocol_version == 2:
+            channel.set_environment_variable(name="GIT_PROTOCOL", value="version=2")
 
         # Run commands
         channel.exec_command(command)

@@ -1,6 +1,7 @@
 # file.py -- Safe access to git files
 # Copyright (C) 2010 Google, Inc.
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -23,9 +24,10 @@
 import os
 import sys
 import warnings
+from typing import ClassVar
 
 
-def ensure_dir_exists(dirname):
+def ensure_dir_exists(dirname) -> None:
     """Ensure a directory exists, creating if necessary."""
     try:
         os.makedirs(dirname)
@@ -33,7 +35,7 @@ def ensure_dir_exists(dirname):
         pass
 
 
-def _fancy_rename(oldname, newname):
+def _fancy_rename(oldname, newname) -> None:
     """Rename file with temporary backup file to rollback if rename fails."""
     if not os.path.exists(newname):
         try:
@@ -114,7 +116,7 @@ class _GitFile:
         released. Typically this will happen in a finally block.
     """
 
-    PROXY_PROPERTIES = {
+    PROXY_PROPERTIES: ClassVar[set[str]] = {
         "closed",
         "encoding",
         "errors",
@@ -123,7 +125,7 @@ class _GitFile:
         "newlines",
         "softspace",
     }
-    PROXY_METHODS = (
+    PROXY_METHODS: ClassVar[set[str]] = {
         "__iter__",
         "flush",
         "fileno",
@@ -136,7 +138,7 @@ class _GitFile:
         "truncate",
         "write",
         "writelines",
-    )
+    }
 
     def __init__(self, filename, mode, bufsize, mask) -> None:
         self._filename = filename
@@ -158,7 +160,7 @@ class _GitFile:
         for method in self.PROXY_METHODS:
             setattr(self, method, getattr(self._file, method))
 
-    def abort(self):
+    def abort(self) -> None:
         """Close and discard the lockfile without overwriting the target.
 
         If the file is already closed, this is a no-op.
@@ -173,7 +175,7 @@ class _GitFile:
             # The file may have been removed already, which is ok.
             self._closed = True
 
-    def close(self):
+    def close(self) -> None:
         """Close this file, saving the lockfile over the original.
 
         Note: If this method fails, it will attempt to delete the lockfile.
@@ -205,8 +207,8 @@ class _GitFile:
             self.abort()
 
     def __del__(self) -> None:
-        if not getattr(self, '_closed', True):
-            warnings.warn('unclosed %r' % self, ResourceWarning, stacklevel=2)
+        if not getattr(self, "_closed", True):
+            warnings.warn(f"unclosed {self!r}", ResourceWarning, stacklevel=2)
             self.abort()
 
     def __enter__(self):

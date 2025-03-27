@@ -1,7 +1,6 @@
-All functionality should be available in pure Python. Optional C
+All functionality should be available in pure Python. Optional Rust
 implementations may be written for performance reasons, but should never
-replace the Python implementation. The C implementations should follow the
-kernel/git coding style.
+replace the Python implementation.
 
 Where possible include updates to NEWS along with your improvements.
 
@@ -9,7 +8,7 @@ New functionality and bug fixes should be accompanied by matching unit tests.
 
 Coding style
 ------------
-Where possible, please follow PEP8 with regard to coding style. Run flake8.
+Where possible, please follow PEP8 with regard to coding style. Run ruff.
 
 Furthermore, triple-quotes should always be """, single quotes are ' unless
 using " would result in less escaping within the string.

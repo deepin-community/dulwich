@@ -1,6 +1,7 @@
 # walk.py -- General implementation of walking commits and their contents.
 # Copyright (C) 2010 Google, Inc.
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -20,11 +21,10 @@
 
 """General implementation of walking commits and their contents."""
 
-
 import collections
 import heapq
 from itertools import chain
-from typing import Deque, Dict, List, Optional, Set, Tuple
+from typing import Optional
 
 from .diff_tree import (
     RENAME_CHANGE_TYPES,
@@ -52,7 +52,7 @@ class WalkEntry:
         self.commit = commit
         self._store = walker.store
         self._get_parents = walker.get_parents
-        self._changes: Dict[str, List[TreeChange]] = {}
+        self._changes: dict[str, list[TreeChange]] = {}
         self._rename_detector = walker.rename_detector
 
     def changes(self, path_prefix=None):
@@ -117,10 +117,7 @@ class WalkEntry:
         return self._changes[path_prefix]
 
     def __repr__(self) -> str:
-        return "<WalkEntry commit={}, changes={!r}>".format(
-            self.commit.id,
-            self.changes(),
-        )
+        return f"<WalkEntry commit={self.commit.id}, changes={self.changes()!r}>"
 
 
 class _CommitTimeQueue:
@@ -131,10 +128,10 @@ class _CommitTimeQueue:
         self._store = walker.store
         self._get_parents = walker.get_parents
         self._excluded = walker.excluded
-        self._pq: List[Tuple[int, Commit]] = []
-        self._pq_set: Set[ObjectID] = set()
-        self._seen: Set[ObjectID] = set()
-        self._done: Set[ObjectID] = set()
+        self._pq: list[tuple[int, Commit]] = []
+        self._pq_set: set[ObjectID] = set()
+        self._seen: set[ObjectID] = set()
+        self._done: set[ObjectID] = set()
         self._min_time = walker.since
         self._last = None
         self._extra_commits_left = _MAX_EXTRA_COMMITS
@@ -143,7 +140,7 @@ class _CommitTimeQueue:
         for commit_id in chain(walker.include, walker.excluded):
             self._push(commit_id)
 
-    def _push(self, object_id: bytes):
+    def _push(self, object_id: bytes) -> None:
         try:
             obj = self._store[object_id]
         except KeyError as exc:
@@ -158,7 +155,7 @@ class _CommitTimeQueue:
             self._pq_set.add(commit.id)
             self._seen.add(commit.id)
 
-    def _exclude_parents(self, commit):
+    def _exclude_parents(self, commit) -> None:
         excluded = self._excluded
         seen = self._seen
         todo = [commit]
@@ -237,12 +234,12 @@ class Walker:
     def __init__(
         self,
         store,
-        include: List[bytes],
-        exclude: Optional[List[bytes]] = None,
-        order: str = 'date',
+        include: list[bytes],
+        exclude: Optional[list[bytes]] = None,
+        order: str = "date",
         reverse: bool = False,
         max_entries: Optional[int] = None,
-        paths: Optional[List[bytes]] = None,
+        paths: Optional[list[bytes]] = None,
         rename_detector: Optional[RenameDetector] = None,
         follow: bool = False,
         since: Optional[int] = None,
@@ -279,7 +276,7 @@ class Walker:
         # Note: when adding arguments to this method, please also update
         # dulwich.repo.BaseRepo.get_walker
         if order not in ALL_ORDERS:
-            raise ValueError("Unknown walk order %s" % order)
+            raise ValueError(f"Unknown walk order {order}")
         self.store = store
         if isinstance(include, bytes):
             # TODO(jelmer): Really, this should require a single type.
@@ -290,7 +287,7 @@ class Walker:
         self.order = order
         self.reverse = reverse
         self.max_entries = max_entries
-        self.paths = paths and set(paths) or None
+        self.paths = (paths and set(paths)) or None
         if follow and not rename_detector:
             rename_detector = RenameDetector(store)
         self.rename_detector = rename_detector
@@ -301,9 +298,9 @@ class Walker:
 
         self._num_entries = 0
         self._queue = queue_cls(self)
-        self._out_queue: Deque[WalkEntry] = collections.deque()
+        self._out_queue: collections.deque[WalkEntry] = collections.deque()
 
-    def _path_matches(self, changed_path):
+    def _path_matches(self, changed_path) -> bool:
         if changed_path is None:
             return False
         if self.paths is None:
@@ -318,7 +315,8 @@ class Walker:
                 return True
         return False
 
-    def _change_matches(self, change):
+    def _change_matches(self, change) -> bool:
+        assert self.paths
         if not change:
             return False
 
@@ -333,7 +331,7 @@ class Walker:
             return True
         return False
 
-    def _should_return(self, entry):
+    def _should_return(self, entry) -> Optional[bool]:
         """Determine if a walk entry should be returned..
 
         Args:

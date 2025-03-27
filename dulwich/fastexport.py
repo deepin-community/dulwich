@@ -1,6 +1,7 @@
 # __init__.py -- Fast export/import functionality
 # Copyright (C) 2010-2013 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -22,7 +23,6 @@
 """Fast export/import functionality."""
 
 import stat
-from typing import Dict, Tuple
 
 from fastimport import commands, parser, processor
 from fastimport import errors as fastimport_errors
@@ -43,15 +43,15 @@ class GitFastExporter:
     def __init__(self, outf, store) -> None:
         self.outf = outf
         self.store = store
-        self.markers: Dict[bytes, bytes] = {}
+        self.markers: dict[bytes, bytes] = {}
         self._marker_idx = 0
 
-    def print_cmd(self, cmd):
+    def print_cmd(self, cmd) -> None:
         self.outf.write(getattr(cmd, "__bytes__", cmd.__repr__)() + b"\n")
 
     def _allocate_marker(self):
         self._marker_idx += 1
-        return ("%d" % (self._marker_idx,)).encode("ascii")
+        return str(self._marker_idx).encode("ascii")
 
     def _export_blob(self, blob):
         marker = self._allocate_marker()
@@ -126,8 +126,8 @@ class GitImportProcessor(processor.ImportProcessor):
         processor.ImportProcessor.__init__(self, params, verbose)
         self.repo = repo
         self.last_commit = ZERO_SHA
-        self.markers: Dict[bytes, bytes] = {}
-        self._contents: Dict[bytes, Tuple[int, bytes]] = {}
+        self.markers: dict[bytes, bytes] = {}
+        self._contents: dict[bytes, tuple[int, bytes]] = {}
 
     def lookup_object(self, objectish):
         if objectish.startswith(b":"):
@@ -139,18 +139,17 @@ class GitImportProcessor(processor.ImportProcessor):
         self.process(p.iter_commands)
         return self.markers
 
-    def blob_handler(self, cmd):
+    def blob_handler(self, cmd) -> None:
         """Process a BlobCommand."""
         blob = Blob.from_string(cmd.data)
         self.repo.object_store.add_object(blob)
         if cmd.mark:
             self.markers[cmd.mark] = blob.id
 
-    def checkpoint_handler(self, cmd):
+    def checkpoint_handler(self, cmd) -> None:
         """Process a CheckpointCommand."""
-        pass
 
-    def commit_handler(self, cmd):
+    def commit_handler(self, cmd) -> None:
         """Process a CommitCommand."""
         commit = Commit()
         if cmd.author is not None:
@@ -194,7 +193,7 @@ class GitImportProcessor(processor.ImportProcessor):
             elif filecmd.name == b"filedeleteall":
                 self._contents = {}
             else:
-                raise Exception("Command %s not supported" % filecmd.name)
+                raise Exception(f"Command {filecmd.name} not supported")
         commit.tree = commit_tree(
             self.repo.object_store,
             ((path, hexsha, mode) for (path, (mode, hexsha)) in self._contents.items()),
@@ -209,11 +208,10 @@ class GitImportProcessor(processor.ImportProcessor):
         if cmd.mark:
             self.markers[cmd.mark] = commit.id
 
-    def progress_handler(self, cmd):
+    def progress_handler(self, cmd) -> None:
         """Process a ProgressCommand."""
-        pass
 
-    def _reset_base(self, commit_id):
+    def _reset_base(self, commit_id) -> None:
         if self.last_commit == commit_id:
             return
         self._contents = {}
@@ -227,7 +225,7 @@ class GitImportProcessor(processor.ImportProcessor):
             ) in iter_tree_contents(self.repo.object_store, tree_id):
                 self._contents[path] = (mode, hexsha)
 
-    def reset_handler(self, cmd):
+    def reset_handler(self, cmd) -> None:
         """Process a ResetCommand."""
         if cmd.from_ is None:
             from_ = ZERO_SHA
@@ -236,7 +234,7 @@ class GitImportProcessor(processor.ImportProcessor):
         self._reset_base(from_)
         self.repo.refs[cmd.ref] = from_
 
-    def tag_handler(self, cmd):
+    def tag_handler(self, cmd) -> None:
         """Process a TagCommand."""
         tag = Tag()
         tag.tagger = cmd.tagger

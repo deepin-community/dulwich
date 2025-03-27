@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2020 Kevin B. Hendricks, Stratford Ontario Canada
 # All rights reserved.
 #
@@ -34,12 +35,12 @@
 
 import re
 import sys
-from typing import List, Optional, Tuple
+from typing import Optional
 
 # only needs to detect git style diffs as this is for
 # use with dulwich
 
-_git_header_name = re.compile(br"diff --git a/(.*) b/(.*)")
+_git_header_name = re.compile(rb"diff --git a/(.*) b/(.*)")
 
 _GIT_HEADER_START = b"diff --git a/"
 _GIT_BINARY_START = b"Binary file"
@@ -55,7 +56,9 @@ _GIT_UNCHANGED_START = b" "
 # properly interface with diffstat routine
 
 
-def _parse_patch(lines: List[bytes]) -> Tuple[List[bytes], List[bool], List[Tuple[int, int]]]:
+def _parse_patch(
+    lines: list[bytes],
+) -> tuple[list[bytes], list[bool], list[tuple[int, int]]]:
     """Parse a git style diff or patch to generate diff stats.
 
     Args:
@@ -186,7 +189,7 @@ def diffstat(lines, max_width=80):
     return output
 
 
-def main():
+def main() -> int:
     argv = sys.argv
     # allow diffstat.py to also be used from the command line
     if len(sys.argv) > 1:

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+
 """Clone.
 
 This trivial script demonstrates how to clone or lock a remote repository.
@@ -7,7 +9,6 @@ Example usage:
   2. python examples/clone.py git://github.com/jelmer/dulwich.git
   3. python examples/clone.py git://github.com/jelmer/dulwich.git dulwich
 """
-
 
 import sys
 from getopt import getopt

@@ -1,5 +1,6 @@
 # Copyright (C) 2017 Jelmer Vernooij <jelmer@jelmer.uk>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -24,8 +25,9 @@ For details for the matching rules, see https://git-scm.com/docs/gitignore
 
 import os.path
 import re
+from collections.abc import Iterable
 from contextlib import suppress
-from typing import TYPE_CHECKING, BinaryIO, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, BinaryIO, Optional, Union
 
 if TYPE_CHECKING:
     from .repo import Repo
@@ -177,11 +179,7 @@ class Pattern:
         )
 
     def __repr__(self) -> str:
-        return "{}({!r}, {!r})".format(
-            type(self).__name__,
-            self.pattern,
-            self.ignorecase,
-        )
+        return f"{type(self).__name__}({self.pattern!r}, {self.ignorecase!r})"
 
     def match(self, path: bytes) -> bool:
         """Try to match a path against this ignore pattern.
@@ -194,8 +192,10 @@ class Pattern:
 
 
 class IgnoreFilter:
-    def __init__(self, patterns: Iterable[bytes], ignorecase: bool = False, path=None) -> None:
-        self._patterns: List[Pattern] = []
+    def __init__(
+        self, patterns: Iterable[bytes], ignorecase: bool = False, path=None
+    ) -> None:
+        self._patterns: list[Pattern] = []
         self._ignorecase = ignorecase
         self._path = path
         for pattern in patterns:
@@ -242,7 +242,7 @@ class IgnoreFilter:
         if path is not None:
             return f"{type(self).__name__}.from_path({path!r})"
         else:
-            return "<%s>" % (type(self).__name__)
+            return f"<{type(self).__name__}>"
 
 
 class IgnoreFilterStack:
@@ -292,21 +292,16 @@ class IgnoreFilterManager:
     def __init__(
         self,
         top_path: str,
-        global_filters: List[IgnoreFilter],
+        global_filters: list[IgnoreFilter],
         ignorecase: bool,
     ) -> None:
-        self._path_filters: Dict[str, Optional[IgnoreFilter]] = {}
+        self._path_filters: dict[str, Optional[IgnoreFilter]] = {}
         self._top_path = top_path
         self._global_filters = global_filters
         self._ignorecase = ignorecase
 
     def __repr__(self) -> str:
-        return "{}({}, {!r}, {!r})".format(
-            type(self).__name__,
-            self._top_path,
-            self._global_filters,
-            self._ignorecase,
-        )
+        return f"{type(self).__name__}({self._top_path}, {self._global_filters!r}, {self._ignorecase!r})"
 
     def _load_path(self, path: str) -> Optional[IgnoreFilter]:
         try:
@@ -330,7 +325,7 @@ class IgnoreFilterManager:
           Iterator over Pattern instances
         """
         if os.path.isabs(path):
-            raise ValueError("%s is an absolute path" % path)
+            raise ValueError(f"{path} is an absolute path")
         filters = [(0, f) for f in self._global_filters]
         if os.path.sep != "/":
             path = path.replace(os.path.sep, "/")

@@ -3,6 +3,7 @@
 #
 # Author: Fabien Boucher <fabien.boucher@enovance.com>
 #
+# SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 # Dulwich is dual-licensed under the Apache License, Version 2.0 and the GNU
 # General Public License as public by the Free Software Foundation; version 2.0
 # or (at your option) any later version. You can redistribute it and/or
@@ -36,6 +37,7 @@ import urllib.parse as urlparse
 import zlib
 from configparser import ConfigParser
 from io import BytesIO
+from typing import Optional
 
 from geventhttpclient import HTTPClient
 
@@ -59,7 +61,7 @@ from ..pack import (
     write_pack_object,
 )
 from ..protocol import TCP_GIT_PORT
-from ..refs import InfoRefsContainer, read_info_refs, write_info_refs
+from ..refs import InfoRefsContainer, read_info_refs, split_peeled_refs, write_info_refs
 from ..repo import OBJECTDIR, BaseRepo
 from ..server import Backend, TCPGitServer
 
@@ -110,7 +112,7 @@ class PackInfoMissingObjectFinder(GreenThreadsMissingObjectFinder):
             if sha in self._tagged:
                 self.add_todo([(self._tagged[sha], None, True)])
         self.sha_done.add(sha)
-        self.progress("counting objects: %d\r" % len(self.sha_done))
+        self.progress(f"counting objects: {len(self.sha_done)}\r")
         return (sha, name)
 
 
@@ -134,12 +136,11 @@ def load_conf(path=None, file=None):
         try:
             confpath = os.environ["DULWICH_SWIFT_CFG"]
         except KeyError as exc:
-            raise Exception(
-                "You need to specify a configuration file") from exc
+            raise Exception("You need to specify a configuration file") from exc
     else:
         confpath = path
     if not os.path.isfile(confpath):
-        raise Exception("Unable to read configuration file %s" % confpath)
+        raise Exception(f"Unable to read configuration file {confpath}")
     conf.read(confpath)
     return conf
 
@@ -258,11 +259,7 @@ class SwiftConnector:
         if ret.status_code < 200 or ret.status_code >= 300:
             raise SwiftException(
                 "AUTH v1.0 request failed on "
-                + "{} with error code {} ({})".format(
-                    str(auth_httpclient.get_base_url()) + path,
-                    ret.status_code,
-                    str(ret.items()),
-                )
+                + f"{self.auth_url} with error code {ret.status_code} ({ret.items()!s})"
             )
         storage_url = ret["X-Storage-Url"]
         token = ret["X-Auth-Token"]
@@ -293,23 +290,21 @@ class SwiftConnector:
         if ret.status_code < 200 or ret.status_code >= 300:
             raise SwiftException(
                 "AUTH v2.0 request failed on "
-                + "{} with error code {} ({})".format(
-                    str(auth_httpclient.get_base_url()) + path,
-                    ret.status_code,
-                    str(ret.items()),
-                )
+                + f"{str(auth_httpclient.get_base_url()) + path} with error code {ret.status_code} ({ret.items()!s})"
             )
         auth_ret_json = json.loads(ret.read())
         token = auth_ret_json["access"]["token"]["id"]
         catalogs = auth_ret_json["access"]["serviceCatalog"]
-        object_store = [
+        object_store = next(
             o_store for o_store in catalogs if o_store["type"] == "object-store"
-        ][0]
+        )
         endpoints = object_store["endpoints"]
-        endpoint = [endp for endp in endpoints if endp["region"] == self.region_name][0]
+        endpoint = next(
+            endp for endp in endpoints if endp["region"] == self.region_name
+        )
         return endpoint[self.endpoint_type], token
 
-    def test_root_exists(self):
+    def test_root_exists(self) -> Optional[bool]:
         """Check that Swift container exist.
 
         Returns: True if exist or None it not
@@ -319,11 +314,11 @@ class SwiftConnector:
             return None
         if ret.status_code < 200 or ret.status_code > 300:
             raise SwiftException(
-                "HEAD request failed with error code %s" % ret.status_code
+                f"HEAD request failed with error code {ret.status_code}"
             )
         return True
 
-    def create_root(self):
+    def create_root(self) -> None:
         """Create the Swift container.
 
         Raises:
@@ -333,7 +328,7 @@ class SwiftConnector:
             ret = self.httpclient.request("PUT", self.base_path)
             if ret.status_code < 200 or ret.status_code > 300:
                 raise SwiftException(
-                    "PUT request failed with error code %s" % ret.status_code
+                    f"PUT request failed with error code {ret.status_code}"
                 )
 
     def get_container_objects(self):
@@ -349,7 +344,7 @@ class SwiftConnector:
             return None
         if ret.status_code < 200 or ret.status_code > 300:
             raise SwiftException(
-                "GET request failed with error code %s" % ret.status_code
+                f"GET request failed with error code {ret.status_code}"
             )
         content = ret.read()
         return json.loads(content)
@@ -368,14 +363,14 @@ class SwiftConnector:
             return None
         if ret.status_code < 200 or ret.status_code > 300:
             raise SwiftException(
-                "HEAD request failed with error code %s" % ret.status_code
+                f"HEAD request failed with error code {ret.status_code}"
             )
         resp_headers = {}
         for header, value in ret.items():
             resp_headers[header.lower()] = value
         return resp_headers
 
-    def put_object(self, name, content):
+    def put_object(self, name, content) -> None:
         """Put an object.
 
         Args:
@@ -402,7 +397,7 @@ class SwiftConnector:
 
         if ret.status_code < 200 or ret.status_code > 300:
             raise SwiftException(
-                "PUT request failed with error code %s" % ret.status_code
+                f"PUT request failed with error code {ret.status_code}"
             )
 
     def get_object(self, name, range=None):
@@ -417,14 +412,14 @@ class SwiftConnector:
         """
         headers = {}
         if range:
-            headers["Range"] = "bytes=%s" % range
+            headers["Range"] = f"bytes={range}"
         path = self.base_path + "/" + name
         ret = self.httpclient.request("GET", path, headers=headers)
         if ret.status_code == 404:
             return None
         if ret.status_code < 200 or ret.status_code > 300:
             raise SwiftException(
-                "GET request failed with error code %s" % ret.status_code
+                f"GET request failed with error code {ret.status_code}"
             )
         content = ret.read()
 
@@ -432,7 +427,7 @@ class SwiftConnector:
             return content
         return BytesIO(content)
 
-    def del_object(self, name):
+    def del_object(self, name) -> None:
         """Delete an object.
 
         Args:
@@ -444,10 +439,10 @@ class SwiftConnector:
         ret = self.httpclient.request("DELETE", path)
         if ret.status_code < 200 or ret.status_code > 300:
             raise SwiftException(
-                "DELETE request failed with error code %s" % ret.status_code
+                f"DELETE request failed with error code {ret.status_code}"
             )
 
-    def del_root(self):
+    def del_root(self) -> None:
         """Delete the root container by removing container content.
 
         Raises:
@@ -458,7 +453,7 @@ class SwiftConnector:
         ret = self.httpclient.request("DELETE", self.base_path)
         if ret.status_code < 200 or ret.status_code > 300:
             raise SwiftException(
-                "DELETE request failed with error code %s" % ret.status_code
+                f"DELETE request failed with error code {ret.status_code}"
             )
 
 
@@ -488,7 +483,7 @@ class SwiftPackReader:
         self.buff = b""
         self.buff_length = self.scon.chunk_length
 
-    def _read(self, more=False):
+    def _read(self, more=False) -> None:
         if more:
             self.buff_length = self.buff_length * 2
         offset = self.base_offset
@@ -517,7 +512,7 @@ class SwiftPackReader:
         self.offset = end
         return data
 
-    def seek(self, offset):
+    def seek(self, offset) -> None:
         """Seek to a specified offset.
 
         Args:
@@ -575,7 +570,7 @@ class SwiftPackData(PackData):
         pack_reader = SwiftPackReader(self.scon, self._filename, self.pack_length)
         return pack_reader.read_checksum()
 
-    def close(self):
+    def close(self) -> None:
         pass
 
 
@@ -687,7 +682,7 @@ class SwiftObjectStore(PackBasedObjectStore):
             if entries:
                 basename = posixpath.join(
                     self.pack_dir,
-                    "pack-%s" % iter_sha1(entry[0] for entry in entries),
+                    f"pack-{iter_sha1(entry[0] for entry in entries)}",
                 )
                 index = BytesIO()
                 write_pack_index_v2(index, entries, pack.get_stored_checksum())
@@ -702,22 +697,22 @@ class SwiftObjectStore(PackBasedObjectStore):
             else:
                 return None
 
-        def abort():
+        def abort() -> None:
             pass
 
         return f, commit, abort
 
-    def add_object(self, obj):
+    def add_object(self, obj) -> None:
         self.add_objects(
             [
                 (obj, None),
             ]
         )
 
-    def _pack_cache_stale(self):
+    def _pack_cache_stale(self) -> bool:
         return False
 
-    def _get_loose_object(self, sha):
+    def _get_loose_object(self, sha) -> None:
         return None
 
     def add_thin_pack(self, read_all, read_some):
@@ -816,17 +811,27 @@ class SwiftInfoRefsContainer(InfoRefsContainer):
         if not f:
             return {}
         refs = read_info_refs(f)
+        (refs, peeled) = split_peeled_refs(refs)
         if old_ref is not None:
             if refs[name] != old_ref:
                 return False
         return refs
 
-    def _write_refs(self, refs):
+    def _write_refs(self, refs) -> None:
         f = BytesIO()
         f.writelines(write_info_refs(refs, self.store))
         self.scon.put_object(self.filename, f)
 
-    def set_if_equals(self, name, old_ref, new_ref):
+    def set_if_equals(
+        self,
+        name,
+        old_ref,
+        new_ref,
+        committer=None,
+        timestamp=None,
+        timezone=None,
+        message=None,
+    ) -> bool:
         """Set a refname to new_ref only if it currently equals old_ref."""
         if name == "HEAD":
             return True
@@ -838,7 +843,9 @@ class SwiftInfoRefsContainer(InfoRefsContainer):
         self._refs[name] = new_ref
         return True
 
-    def remove_if_equals(self, name, old_ref):
+    def remove_if_equals(
+        self, name, old_ref, committer=None, timestamp=None, timezone=None, message=None
+    ) -> bool:
         """Remove a refname only if it currently equals old_ref."""
         if name == "HEAD":
             return True
@@ -875,24 +882,24 @@ class SwiftRepo(BaseRepo):
         self.scon = SwiftConnector(self.root, self.conf)
         objects = self.scon.get_container_objects()
         if not objects:
-            raise Exception("There is not any GIT repo here : %s" % self.root)
+            raise Exception(f"There is not any GIT repo here : {self.root}")
         objects = [o["name"].split("/")[0] for o in objects]
         if OBJECTDIR not in objects:
-            raise Exception("This repository (%s) is not bare." % self.root)
+            raise Exception(f"This repository ({self.root}) is not bare.")
         self.bare = True
         self._controldir = self.root
         object_store = SwiftObjectStore(self.scon)
         refs = SwiftInfoRefsContainer(self.scon, object_store)
         BaseRepo.__init__(self, object_store, refs)
 
-    def _determine_file_mode(self):
+    def _determine_file_mode(self) -> bool:
         """Probe the file-system to determine whether permissions can be trusted.
 
         Returns: True if permissions can be trusted, False otherwise.
         """
         return False
 
-    def _put_named_file(self, filename, contents):
+    def _put_named_file(self, filename, contents) -> None:
         """Put an object in a Swift container.
 
         Args:
@@ -934,7 +941,7 @@ class SwiftSystemBackend(Backend):
         return SwiftRepo(path, self.conf)
 
 
-def cmd_daemon(args):
+def cmd_daemon(args) -> None:
     """Entry point for starting a TCP git server."""
     import optparse
 
@@ -986,7 +993,7 @@ def cmd_daemon(args):
     server.serve_forever()
 
 
-def cmd_init(args):
+def cmd_init(args) -> None:
     import optparse
 
     parser = optparse.OptionParser()
@@ -1007,19 +1014,21 @@ def cmd_init(args):
     SwiftRepo.init_bare(scon, conf)
 
 
-def main(argv=sys.argv):
+def main(argv=sys.argv) -> None:
     commands = {
         "init": cmd_init,
         "daemon": cmd_daemon,
     }
 
     if len(sys.argv) < 2:
-        print("Usage: {} <{}> [OPTIONS...]".format(sys.argv[0], "|".join(commands.keys())))
+        print(
+            "Usage: {} <{}> [OPTIONS...]".format(sys.argv[0], "|".join(commands.keys()))
+        )
         sys.exit(1)
 
     cmd = sys.argv[1]
     if cmd not in commands:
-        print("No such subcommand: %s" % cmd)
+        print(f"No such subcommand: {cmd}")
         sys.exit(1)
     commands[cmd](sys.argv[2:])
 
